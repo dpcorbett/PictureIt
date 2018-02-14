@@ -1,12 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace PictureIt
@@ -36,14 +31,18 @@ namespace PictureIt
             int propCount = 0;
             ASCIIEncoding encodings = new ASCIIEncoding();
             propItems = pcbImage.Image.PropertyItems;
-
+            // Clear existing data.
+            lsbData.Items.Clear();
             for(propCount = 0; propCount < propItems.Length; propCount++)
             {
                 PropertyItem item = propItems[propCount];
-                lsbData.Items.Add("Property Item " + propCount.ToString());
-                lsbData.Items.Add("ID: 0x" + item.Id.ToString("x"));
-                lsbData.Items.Add("Property Type " + item.Type);
-                lsbData.Items.Add("Property Value " + encodings.GetString(item.Value));
+                if (item.Type == 2 && encodings.GetString(item.Value).Trim() != string.Empty)
+                {
+                    lsbData.Items.Add("Property Item " + propCount.ToString());
+                    lsbData.Items.Add("ID: 0x" + item.Id.ToString("x"));
+                    lsbData.Items.Add("Property Type " + item.Type);
+                    lsbData.Items.Add("Property Value " + encodings.GetString(item.Value));
+                }
                 if (propCount == 1) // Camera
                 {
                     tslCamera.Text = "Camera: " + encodings.GetString(propItems[1].Value);
