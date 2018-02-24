@@ -28,20 +28,27 @@ namespace PictureIt
 
         private void btnGetData_Click(object sender, EventArgs e)
         {
+            if (pcbImage.Image == null)
+            {
+                MessageBox.Show("Please select an image.", "No Picture Loaded", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+                return
+                    ;
+            }
+
             int propCount = 0;
             ASCIIEncoding encodings = new ASCIIEncoding();
             propItems = pcbImage.Image.PropertyItems;
             // Clear existing data.
-            lsbData.Items.Clear();
+            lsbMetaData.Items.Clear();
             for(propCount = 0; propCount < propItems.Length; propCount++)
             {
                 PropertyItem item = propItems[propCount];
                 if (item.Type == 2 && encodings.GetString(item.Value).Trim() != string.Empty)
                 {
-                    lsbData.Items.Add("Property Item " + propCount.ToString());
-                    lsbData.Items.Add("ID: 0x" + item.Id.ToString("x"));
-                    lsbData.Items.Add("Property Type " + item.Type);
-                    lsbData.Items.Add("Property Value " + encodings.GetString(item.Value));
+                    lsbMetaData.Items.Add("Property Item " + propCount.ToString());
+                    lsbMetaData.Items.Add("ID: 0x" + item.Id.ToString("x"));
+                    lsbMetaData.Items.Add("Property Type " + item.Type);
+                    lsbMetaData.Items.Add("Property Value " + encodings.GetString(item.Value));
                 }
                 if (propCount == 1) // Camera
                 {
