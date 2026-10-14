@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="PictureIt.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="PictureIt">
+  <Window.SystemBackdrop>
+    <MicaBackdrop />
+  </Window.SystemBackdrop>
+
+  <!-- Placeholder shell; the NavigationView (Library, Map, Batch history, Settings) arrives in Phase 2. -->
+  <Grid>
+    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+      <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="PictureIt" HorizontalAlignment="Center" />
+      <TextBlock Style="{StaticResource BodyTextBlockStyle}" Text="View and edit photo metadata." HorizontalAlignment="Center" />
+    </StackPanel>
+  </Grid>
+</Window>
