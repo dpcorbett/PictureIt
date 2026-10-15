@@ -87,12 +87,12 @@ public sealed partial class ExifToolWriter(
             args.Add("-P");
         }
 
-        args.AddRange(ExifToolArguments.ForEdits(file.Edits, valueFileDirectory));
-        args.Add(file.FilePath);
-
         ExifToolResult response;
         try
         {
+            var edits = await ResolveListEditsAsync(file, cancellationToken).ConfigureAwait(false);
+            args.AddRange(ExifToolArguments.ForEdits(edits, valueFileDirectory));
+            args.Add(file.FilePath);
             response = await exifTool.ExecuteAsync(args, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -101,6 +101,31 @@ public sealed partial class ExifToolWriter(
         }
 
         return Interpret(file.FilePath, response);
+    }
+
+    /// <summary>
+    /// Turns list additions/removals into a plain Set of the final list, computed from the file's current values,
+    /// so the result is exactly what <see cref="ChangePreview"/> predicted.
+    /// </summary>
+    private async Task<IReadOnlyList<MetadataEdit>> ResolveListEditsAsync(FileEdits file, CancellationToken cancellationToken)
+    {
+        var listKeys = file.Edits
+            .Where(e => e.Kind is EditKind.AddToList or EditKind.RemoveFromList)
+            .Select(e => e.Key)
+            .Distinct()
+            .ToArray();
+        if (listKeys.Length == 0)
+        {
+            return file.Edits;
+        }
+
+        string[] args = ["-j", "-G1", "-l", "-use", "MWG", .. listKeys.Select(k => $"-{k}"), file.FilePath];
+        var response = await exifTool.ExecuteAsync(args, cancellationToken).ConfigureAwait(false);
+        var current = ExifToolReader.Parse(response.Output).GetValueOrDefault(file.FilePath);
+
+        return ListEdits.Resolve(
+            file.Edits,
+            key => current is not null && current.TryGetTag(key, out var tag) ? tag.Values : null);
     }
 
     internal static FileWriteResult Interpret(string filePath, ExifToolResult response)

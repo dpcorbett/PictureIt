@@ -1,5 +1,6 @@
 using System.Text.Json;
 using PictureIt.Core.Abstractions;
+using PictureIt.Core.Catalog;
 using PictureIt.Core.Model;
 
 namespace PictureIt.Infrastructure.ExifTool;
@@ -36,8 +37,9 @@ public sealed class ExifToolReader(ExifToolProcess exifTool) : IMetadataReader
 
         foreach (var batch in paths.Chunk(BatchSize))
         {
-            // -j: JSON; -G1: specific group names; -l: description, formatted value and raw value per tag.
-            string[] args = ["-j", "-G1", "-l", .. batch];
+            // -j: JSON; -G1: specific group names; -l: description, formatted value and raw value per tag;
+            // -use MWG: add the MWG:* tags the editor's common fields are written through.
+            string[] args = ["-j", "-G1", "-l", "-use", "MWG", .. batch];
             var response = await exifTool.ExecuteAsync(args, cancellationToken).ConfigureAwait(false);
             var parsed = Parse(response.Output);
 
@@ -106,8 +108,9 @@ public sealed class ExifToolReader(ExifToolProcess exifTool) : IMetadataReader
         var isList = false;
         if (element.TryGetProperty("val", out var val))
         {
-            isList = val.ValueKind == JsonValueKind.Array;
-            values = isList ? [.. val.EnumerateArray().Select(ToText)] : [ToText(val)];
+            // ExifTool writes a one-item list as a plain value, so also ask the catalog.
+            isList = val.ValueKind == JsonValueKind.Array || TagCatalog.IsListTag(key);
+            values = val.ValueKind == JsonValueKind.Array ? [.. val.EnumerateArray().Select(ToText)] : [ToText(val)];
         }
 
         string? raw = null;

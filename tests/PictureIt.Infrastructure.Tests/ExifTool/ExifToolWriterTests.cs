@@ -67,6 +67,36 @@ public sealed class ExifToolWriterTests : IDisposable
     }
 
     [Fact]
+    public async Task Adding_an_existing_list_item_does_not_duplicate_it()
+    {
+        var path = _files.Copy(TestFiles.SampleJpeg);
+
+        await Apply(path, MetadataEdit.AddToList(Subject, "London", "Thames"));
+
+        ListValues(await Read(path), Subject).ShouldBe(["London", "Big Ben", "Thames"]);
+    }
+
+    [Fact]
+    public async Task MWG_fields_write_every_standard_location()
+    {
+        var path = _files.Copy(TestFiles.SampleJpeg);
+
+        await Apply(
+            path,
+            MetadataEdit.AddToList(TagKey.Parse("MWG:Keywords"), "Thames"),
+            MetadataEdit.Set(TagKey.Parse("MWG:Description"), "Updated"),
+            MetadataEdit.Set(TagKey.Parse("MWG:Rating"), "4"));
+
+        var metadata = await Read(path);
+        ListValues(metadata, Subject).ShouldBe(["London", "Big Ben", "Thames"]);
+        ListValues(metadata, TagKey.Parse("IPTC:Keywords")).ShouldBe(["London", "Big Ben", "Thames"]);
+        metadata.GetValue("XMP-dc:Description").ShouldBe("Updated");
+        metadata.GetValue("IFD0:ImageDescription").ShouldBe("Updated");
+        metadata.GetValue("IPTC:Caption-Abstract").ShouldBe("Updated");
+        metadata.GetValue("MWG:Rating").ShouldBe("4");
+    }
+
+    [Fact]
     public async Task Set_replaces_a_whole_list()
     {
         var path = _files.Copy(TestFiles.SampleJpeg);

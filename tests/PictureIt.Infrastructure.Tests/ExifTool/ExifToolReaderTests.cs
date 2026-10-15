@@ -39,6 +39,29 @@ public sealed class ExifToolReaderTests(ExifToolFixture exifTool) : IDisposable
     }
 
     [Fact]
+    public async Task Reads_MWG_fields_as_editable()
+    {
+        var metadata = await _reader.ReadAsync(_files.Copy(TestFiles.SampleJpeg), TestContext.Current.CancellationToken);
+
+        Tag(metadata, "MWG:Keywords").Values.ShouldBe(["London", "Big Ben"]);
+        Tag(metadata, "MWG:Keywords").IsWritable.ShouldBeTrue();
+        metadata.GetValue("MWG:Description").ShouldBe("Sample image for PictureIt tests");
+        metadata.GetValue("MWG:Creator").ShouldBe("Test Photographer");
+    }
+
+    [Fact]
+    public async Task Marks_a_one_item_list_as_a_list()
+    {
+        var path = _files.Copy(TestFiles.SampleJpeg);
+        await exifTool.Process.ExecuteAsync(["-overwrite_original", "-XMP-dc:Subject=Solo", path], TestContext.Current.CancellationToken);
+
+        var subject = Tag(await _reader.ReadAsync(path, TestContext.Current.CancellationToken), "XMP-dc:Subject");
+
+        subject.IsList.ShouldBeTrue();
+        subject.Values.ShouldBe(["Solo"]);
+    }
+
+    [Fact]
     public async Task Marks_computed_and_file_system_tags_read_only()
     {
         var metadata = await _reader.ReadAsync(_files.Copy(TestFiles.SampleJpeg), TestContext.Current.CancellationToken);

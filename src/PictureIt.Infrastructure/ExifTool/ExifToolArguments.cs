@@ -31,6 +31,8 @@ internal static class ExifToolArguments
                     args.AddRange(edit.Values.Select(v => Assign(tag, string.Empty, v, valueFileDirectory)));
                     break;
 
+                // Raw ExifTool list operations. ExifToolWriter resolves list edits to a Set first (see ListEdits),
+                // because "+=" duplicates existing items and combining "-=" with "+=" reorders the list.
                 case EditKind.AddToList:
                     args.AddRange(edit.Values.Select(v => Assign(tag, "+", v, valueFileDirectory)));
                     break;

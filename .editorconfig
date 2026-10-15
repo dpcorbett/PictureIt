@@ -33,3 +33,5 @@ dotnet_diagnostic.CA2007.severity = none
 [tests/**.cs]
 # Test names read as sentences: Method_does_thing_when_condition.
 dotnet_diagnostic.CA1707.severity = none
+# Inline expected-value arrays are clearer than static fields in assertions.
+dotnet_diagnostic.CA1861.severity = none

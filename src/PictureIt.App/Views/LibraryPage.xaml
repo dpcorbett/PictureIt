@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="PictureIt.App.Views.LibraryPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:PictureIt.App.Views"
+    xmlns:vm="using:PictureIt.Presentation.ViewModels"
+    NavigationCacheMode="Required"
+    AllowDrop="True"
+    DragOver="OnDragOver"
+    Drop="OnDrop">
+
+  <Page.Resources>
+    <CollectionViewSource x:Name="GroupedFields" IsSourceGrouped="True" ItemsPath="Fields" Source="{x:Bind ViewModel.Editor.Groups}" />
+
+    <!-- Label above every editor row: friendly name, optional tag key, and a dot when edited. -->
+    <DataTemplate x:Key="FieldLabel" x:DataType="vm:TagFieldViewModel">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <TextBlock Text="{x:Bind DisplayName}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+        <TextBlock Text="{x:Bind KeyText}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="12"
+                   VerticalAlignment="Bottom" Visibility="{x:Bind ShowKey, Mode=OneWay}" IsTextSelectionEnabled="True" />
+        <Ellipse Width="6" Height="6" Fill="{ThemeResource AccentFillColorDefaultBrush}" VerticalAlignment="Center"
+                 Visibility="{x:Bind IsDirty, Mode=OneWay}" ToolTipService.ToolTip="Edited" />
+      </StackPanel>
+    </DataTemplate>
+
+    <views:TagFieldTemplateSelector x:Key="FieldTemplates">
+      <views:TagFieldTemplateSelector.ReadOnly>
+        <DataTemplate x:DataType="vm:TagFieldViewModel">
+          <StackPanel Padding="0,6" Spacing="2">
+            <ContentPresenter Content="{x:Bind}" ContentTemplate="{StaticResource FieldLabel}" />
+            <TextBlock Text="{x:Bind Value}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+          </StackPanel>
+        </DataTemplate>
+      </views:TagFieldTemplateSelector.ReadOnly>
+
+      <views:TagFieldTemplateSelector.Text>
+        <DataTemplate x:DataType="vm:TagFieldViewModel">
+          <StackPanel Padding="0,6" Spacing="4">
+            <ContentPresenter Content="{x:Bind}" ContentTemplate="{StaticResource FieldLabel}" />
+            <TextBox Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{x:Bind Placeholder}"
+                     AutomationProperties.Name="{x:Bind DisplayName}" />
+            <TextBlock Text="{x:Bind Error, Mode=OneWay}" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap"
+                       FontSize="12" Visibility="{x:Bind HasError, Mode=OneWay}" />
+          </StackPanel>
+        </DataTemplate>
+      </views:TagFieldTemplateSelector.Text>
+
+      <views:TagFieldTemplateSelector.Multiline>
+        <DataTemplate x:DataType="vm:TagFieldViewModel">
+          <StackPanel Padding="0,6" Spacing="4">
+            <ContentPresenter Content="{x:Bind}" ContentTemplate="{StaticResource FieldLabel}" />
+            <TextBox Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True"
+                     AutomationProperties.Name="{x:Bind DisplayName}"
+                     TextWrapping="Wrap" MinHeight="72" MaxHeight="200" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+          </StackPanel>
+        </DataTemplate>
+      </views:TagFieldTemplateSelector.Multiline>
+
+      <views:TagFieldTemplateSelector.Rating>
+        <DataTemplate x:DataType="vm:TagFieldViewModel">
+          <StackPanel Padding="0,6" Spacing="4">
+            <ContentPresenter Content="{x:Bind}" ContentTemplate="{StaticResource FieldLabel}" />
+            <RatingControl Value="{x:Bind RatingValue, Mode=TwoWay}" IsClearEnabled="True" HorizontalAlignment="Left"
+                           AutomationProperties.Name="{x:Bind DisplayName}" />
+          </StackPanel>
+        </DataTemplate>
+      </views:TagFieldTemplateSelector.Rating>
+    </views:TagFieldTemplateSelector>
+  </Page.Resources>
+
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="320" />
+      <ColumnDefinition Width="*" />
+      <ColumnDefinition Width="440" />
+    </Grid.ColumnDefinitions>
+
+    <!-- Toolbar -->
+    <Grid Grid.ColumnSpan="3" Padding="16,4,12,8" ColumnSpacing="12">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <StackPanel Orientation="Horizontal" Spacing="4">
+        <SplitButton Command="{x:Bind ViewModel.OpenFolderCommand}" ToolTipService.ToolTip="Open a folder (Ctrl+O)">
+          <SplitButton.KeyboardAccelerators>
+            <KeyboardAccelerator Modifiers="Control" Key="O" />
+          </SplitButton.KeyboardAccelerators>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <FontIcon Glyph="&#xE838;" FontSize="16" />
+            <TextBlock Text="Open folder" />
+          </StackPanel>
+          <SplitButton.Flyout>
+            <MenuFlyout x:Name="RecentMenu" Placement="BottomEdgeAlignedLeft" Opening="OnRecentMenuOpening" />
+          </SplitButton.Flyout>
+        </SplitButton>
+      </StackPanel>
+      <StackPanel Grid.Column="1" VerticalAlignment="Center" Visibility="{x:Bind ViewModel.HasFolder, Mode=OneWay}">
+        <TextBlock Text="{x:Bind ViewModel.FolderName, Mode=OneWay}" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+        <TextBlock Text="{x:Bind ViewModel.CurrentFolder, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True" />
+      </StackPanel>
+    </Grid>
+
+    <!-- Thumbnails -->
+    <Grid Grid.Row="1" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+          BorderThickness="0,1,1,0" CornerRadius="0,8,0,0">
+      <GridView
+          x:Name="PhotoGrid"
+          ItemsSource="{x:Bind ViewModel.Photos}"
+          SelectionMode="Extended"
+          Padding="8"
+          SelectionChanged="OnPhotoSelectionChanged"
+          ContainerContentChanging="OnPhotoContainerContentChanging">
+        <GridView.ItemTemplate>
+          <DataTemplate x:DataType="vm:PhotoItemViewModel">
+            <Grid Width="136" Height="136" RowSpacing="4" ToolTipService.ToolTip="{x:Bind FileName}">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
+              <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="4">
+                <Image x:Name="Thumb" Stretch="Uniform" />
+              </Border>
+              <TextBlock Grid.Row="1" Text="{x:Bind FileName}" Style="{StaticResource CaptionTextBlockStyle}"
+                         TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
+            </Grid>
+          </DataTemplate>
+        </GridView.ItemTemplate>
+      </GridView>
+
+      <!-- Empty state -->
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12" Padding="24"
+                  Visibility="{x:Bind views:Ui.CollapsedIf(ViewModel.HasFolder), Mode=OneWay}">
+        <FontIcon Glyph="&#xE8B9;" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+        <TextBlock Text="Open a folder of photos" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
+        <TextBlock Text="Or drag a folder or photo here." Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+        <Button Content="Open folder" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Center"
+                Command="{x:Bind ViewModel.OpenFolderCommand}" />
+      </StackPanel>
+    </Grid>
+
+    <!-- Preview: Ctrl+wheel or pinch to zoom, drag scrollbars or swipe to pan -->
+    <Grid Grid.Row="1" Grid.Column="1" Padding="12">
+      <!-- The host is sized to the viewport in code-behind, so the image fits (centred) at 1x and zooming enlarges it. -->
+      <ScrollViewer x:Name="PreviewScroller" ZoomMode="Enabled" MinZoomFactor="1" MaxZoomFactor="8"
+                    HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Auto" VerticalScrollMode="Auto"
+                    SizeChanged="OnPreviewSizeChanged">
+        <Grid x:Name="PreviewHost">
+          <Image x:Name="PreviewImage" Stretch="Uniform" AutomationProperties.Name="Preview" />
+        </Grid>
+      </ScrollViewer>
+      <ProgressRing x:Name="PreviewProgress" IsActive="False" Width="32" Height="32" />
+    </Grid>
+
+    <!-- Metadata editor -->
+    <Grid Grid.Row="1" Grid.Column="2" Background="{ThemeResource LayerFillColorDefaultBrush}"
+          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1,1,0,0" CornerRadius="8,0,0,0" RowSpacing="8" Padding="16,12,8,0">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+
+      <Grid ColumnSpacing="8" Padding="0,0,8,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Text="{x:Bind ViewModel.Editor.FileName, Mode=OneWay}" Style="{StaticResource SubtitleTextBlockStyle}"
+                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+        <Button Grid.Column="1" Command="{x:Bind ViewModel.Editor.RevertCommand}" ToolTipService.ToolTip="Discard changes"
+                AutomationProperties.Name="Discard changes">
+          <FontIcon Glyph="&#xE7A7;" FontSize="16" />
+        </Button>
+        <Button Grid.Column="2" Command="{x:Bind ViewModel.Editor.SaveCommand}" Style="{StaticResource AccentButtonStyle}"
+                ToolTipService.ToolTip="Save changes (Ctrl+S)" AutomationProperties.Name="Save">
+          <Button.KeyboardAccelerators>
+            <KeyboardAccelerator Modifiers="Control" Key="S" />
+          </Button.KeyboardAccelerators>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <FontIcon Glyph="&#xE74E;" FontSize="16" />
+            <TextBlock Text="Save" />
+          </StackPanel>
+        </Button>
+      </Grid>
+
+      <Grid Grid.Row="1" ColumnSpacing="8" Padding="0,0,8,0" Visibility="{x:Bind ViewModel.Editor.HasPhoto, Mode=OneWay}">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <AutoSuggestBox PlaceholderText="Filter tags" QueryIcon="Find"
+                        Text="{x:Bind ViewModel.Editor.FilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+        <ToggleButton Grid.Column="1" IsChecked="{x:Bind ViewModel.Editor.ShowTagKeys, Mode=TwoWay}" ToolTipService.ToolTip="Show tag keys"
+                      AutomationProperties.Name="Show tag keys">
+          <FontIcon Glyph="&#xE943;" FontSize="16" />
+        </ToggleButton>
+      </Grid>
+
+      <ListView
+          Grid.Row="2"
+          ItemsSource="{x:Bind GroupedFields.View}"
+          ItemTemplateSelector="{StaticResource FieldTemplates}"
+          SelectionMode="None"
+          IsItemClickEnabled="False"
+          Padding="0,0,8,16"
+          Visibility="{x:Bind ViewModel.Editor.HasPhoto, Mode=OneWay}">
+        <ListView.ItemContainerStyle>
+          <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+          </Style>
+        </ListView.ItemContainerStyle>
+        <ListView.GroupStyle>
+          <GroupStyle>
+            <GroupStyle.HeaderTemplate>
+              <DataTemplate x:DataType="vm:TagGroupViewModel">
+                <TextBlock Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}"
+                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+              </DataTemplate>
+            </GroupStyle.HeaderTemplate>
+          </GroupStyle>
+        </ListView.GroupStyle>
+      </ListView>
+
+      <TextBlock Grid.Row="2" Text="{x:Bind ViewModel.Editor.Message, Mode=OneWay}" TextWrapping="Wrap" Padding="0,8,8,0"
+                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+      <ProgressBar Grid.Row="2" IsIndeterminate="True" VerticalAlignment="Top" Margin="0,0,8,0"
+                   Visibility="{x:Bind ViewModel.Editor.IsLoading, Mode=OneWay}" />
+    </Grid>
+
+    <!-- Status bar -->
+    <Grid Grid.Row="2" Grid.ColumnSpan="3" Padding="16,6" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+      <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}"
+                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+    </Grid>
+  </Grid>
+</Page>

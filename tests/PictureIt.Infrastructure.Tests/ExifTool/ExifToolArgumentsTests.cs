@@ -49,11 +49,11 @@ public sealed class ExifToolArgumentsTests : IDisposable
     [Fact]
     public void Writes_multi_line_values_to_a_file_assignment()
     {
-        var args = ExifToolArguments.ForEdits([MetadataEdit.AddToList(Subject, "two\nlines")], _files.Directory);
+        var args = ExifToolArguments.ForEdits([MetadataEdit.Set(Subject, "two\nlines")], _files.Directory);
 
         var arg = args.ShouldHaveSingleItem();
-        arg.ShouldStartWith("-XMP-dc:Subject+<=");
-        File.ReadAllText(arg["-XMP-dc:Subject+<=".Length..]).ShouldBe("two\nlines");
+        arg.ShouldStartWith("-XMP-dc:Subject<=");
+        File.ReadAllText(arg["-XMP-dc:Subject<=".Length..]).ShouldBe("two\nlines");
     }
 
     public void Dispose() => _files.Dispose();

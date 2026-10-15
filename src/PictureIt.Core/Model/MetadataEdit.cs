@@ -8,7 +8,7 @@ public enum EditKind
     /// <summary>Delete the tag.</summary>
     Remove,
 
-    /// <summary>Append items to a list tag, keeping existing ones.</summary>
+    /// <summary>Append items to a list tag. Existing items keep their place; items already present aren't duplicated.</summary>
     AddToList,
 
     /// <summary>Remove matching items from a list tag.</summary>

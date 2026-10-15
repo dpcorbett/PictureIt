@@ -8,11 +8,37 @@
     <MicaBackdrop />
   </Window.SystemBackdrop>
 
-  <!-- Placeholder shell; the NavigationView (Library, Map, Batch history, Settings) arrives in Phase 2. -->
   <Grid>
-    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-      <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="PictureIt" HorizontalAlignment="Center" />
-      <TextBlock Style="{StaticResource BodyTextBlockStyle}" Text="View and edit photo metadata." HorizontalAlignment="Center" />
-    </StackPanel>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <!-- Custom title bar: drag area with the app name; caption buttons are drawn by the system on the right. -->
+    <Grid x:Name="AppTitleBar" Height="40" Padding="16,0,0,0">
+      <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+        <FontIcon Glyph="&#xE91B;" FontSize="14" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+        <TextBlock Text="PictureIt" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
+      </StackPanel>
+    </Grid>
+
+    <NavigationView
+        x:Name="Navigation"
+        Grid.Row="1"
+        PaneDisplayMode="LeftCompact"
+        IsBackButtonVisible="Collapsed"
+        IsSettingsVisible="True"
+        IsPaneToggleButtonVisible="False"
+        SelectionChanged="OnNavigationSelectionChanged">
+      <NavigationView.MenuItems>
+        <NavigationViewItem x:Name="LibraryItem" Content="Library" Tag="library">
+          <NavigationViewItem.Icon>
+            <FontIcon Glyph="&#xE8B9;" />
+          </NavigationViewItem.Icon>
+        </NavigationViewItem>
+      </NavigationView.MenuItems>
+
+      <Frame x:Name="ContentFrame" />
+    </NavigationView>
   </Grid>
 </Window>
