@@ -24,5 +24,11 @@ public interface IBackupStore
     /// <summary>Copies every backed-up file back over its original location.</summary>
     Task RestoreAsync(Guid batchId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Copies every backed-up file back, to the path <paramref name="currentPaths"/> gives for its original path
+    /// (for files renamed or moved since), or to its original path if it isn't listed.
+    /// </summary>
+    Task RestoreAsync(Guid batchId, IReadOnlyDictionary<string, string> currentPaths, CancellationToken cancellationToken = default);
+
     Task DeleteAsync(Guid batchId, CancellationToken cancellationToken = default);
 }

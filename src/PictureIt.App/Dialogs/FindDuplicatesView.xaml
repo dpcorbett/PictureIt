@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="PictureIt.App.Dialogs.FindDuplicatesView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <StackPanel Spacing="12" Width="440">
+    <TextBlock TextWrapping="Wrap">
+      <Run Text="Looks for identical files among the" />
+      <Run Text="{x:Bind Tool.PhotoCountText}" />
+      <Run Text="in this folder." />
+    </TextBlock>
+    <CheckBox IsChecked="{x:Bind Tool.IncludeSameMoment, Mode=TwoWay}">
+      <TextBlock TextWrapping="Wrap"
+                 Text="Also find different files taken by the same camera at the same moment, such as edited copies and RAW+JPEG pairs (bursts show up too)" />
+    </CheckBox>
+    <TextBlock Text="{x:Bind Tool.Error, Mode=OneWay}" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" />
+  </StackPanel>
+</UserControl>

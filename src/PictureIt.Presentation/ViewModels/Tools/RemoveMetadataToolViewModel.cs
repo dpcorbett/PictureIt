@@ -7,7 +7,7 @@ using PictureIt.Presentation.Services;
 namespace PictureIt.Presentation.ViewModels.Tools;
 
 /// <summary>Privacy clean-up before sharing, either in place or on copies in another folder.</summary>
-public sealed partial class RemoveMetadataToolViewModel : ToolViewModel
+public sealed partial class RemoveMetadataToolViewModel : MetadataToolViewModel
 {
     private readonly IFolderPicker _folderPicker;
 

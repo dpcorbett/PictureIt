@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-PictureIt is a Windows desktop app for viewing and editing photo metadata (EXIF/IPTC/XMP), with **bulk editing** as the core feature. It's built on .NET 10 with a WinUI 3 (Windows App SDK) UI. Development follows a phased plan (scaffold → metadata engine → app shell → bulk editing → organising → search → location → advanced → packaging). Phases 0–3 are done: browse a folder, edit one or many photos, apply bulk tools (templates, copy/paste, find and replace, shift dates, remove metadata) and undo any batch from History. Organising tools (Phase 4: rename, sort, export/import, duplicates) are next.
+PictureIt is a Windows desktop app for viewing and editing photo metadata (EXIF/IPTC/XMP), with **bulk editing** as the core feature. It's built on .NET 10 with a WinUI 3 (Windows App SDK) UI. Development follows a phased plan (scaffold → metadata engine → app shell → bulk editing → organising → search → location → advanced → packaging). Phases 0–4 are done: browse a folder, edit one or many photos, apply bulk tools (templates, copy/paste, find and replace, shift dates, remove metadata), organise files (rename and sort from metadata, CSV/JSON export and import, find duplicates) and undo batches from History. Search and the SQLite catalogue (Phase 5) are next.
 
 ## Commands
 
@@ -33,6 +33,15 @@ The app's exe is `src\PictureIt.App\bin\x64\Debug\net10.0-windows10.0.26100.0\wi
 Design rule: every metadata write goes through **`BatchRunner`** (`Presentation/Services`): build an `EditSet` → `ChangePreview` → user confirms → write with progress and backup → record a `BatchRecord` in history → send `FilesChangedMessage` → report failures. Don't add write paths that skip it. Views that show files listen for `FilesChangedMessage` (CommunityToolkit `IMessenger`) and reload. Undo restores from the batch's backup and sends the same message.
 
 **The preview must match the write.** `PreviewMatchesWriteTests` (Infrastructure.Tests) predicts each bulk operation with `ChangePreview`, writes it with real ExifTool, re-reads the file, and fails if anything changed that the preview didn't show. Add a case there for every new operation.
+
+### Organising (Core/Organise)
+
+- **File batches** (rename, sort into folders by move or copy) go through **`FileOperationRunner`** (Presentation/Services), the file counterpart of `BatchRunner`. The tool dialog's live preview is the confirmation. `FilePlanner` builds a `FilePlan` without touching the disk; `FileOrganiser` (Infrastructure/Files) carries it out. Never overwrite: clashes get " (2)", " (3)"... at planning time, and a target that appears later fails that file. Renames that swap or shift names within a batch go via temporary names.
+- `NamePattern` renders `{Token[:format][|fallback]}` patterns. Tokens come from `PhotoFacts`, which reads each fact from the first of several tags. Any `{Group:Name}` tag works too. In folder patterns, `\` separates folders, and values can't add folders.
+- History: `BatchRecord.Kind` (Metadata, Rename, Move, Copy, Recycle) decides undo. File batches store `Moves` and `CreatedFolders`. Undo moves files back or deletes copies, then removes created folders if empty. Recycled files are restored from the Recycle Bin, not from History. **Undoing a metadata batch follows later renames** (`PathHistory.CurrentPaths`), so the backup is restored where the photo is now.
+- Views that list a folder listen for `FolderChangedMessage`. `LibraryViewModel` re-reads the folder and re-selects moved photos.
+- Export/import use ExifTool's layout: a `SourceFile` column plus `Group:Name` columns. `MetadataImport` turns only cells that differ from the photo into edits; blank cells change nothing, and invalid values (e.g. dates reformatted by Excel) are skipped and reported. Imports go through `BatchRunner`. `PreviewMatchesWriteTests` checks that an unchanged export imports as no changes.
+- `DuplicateFinder` groups identical files (SHA-256 of files sharing a size) and, optionally, files with the same camera and capture second. The review starts with every identical copy except one ticked, and nothing ticked in same-moment groups. `RecycleBinService` (App) uses `SHFileOperation` with undo, which warns before deleting anything permanently.
 
 ### Bulk operations (Core/Operations)
 
@@ -70,7 +79,7 @@ Tags are identified by `TagKey` (`Core/Model/TagKey.cs`), using ExifTool's group
 - The editor list is a grouped `ListView` over `MetadataEditorViewModel.Groups`, using `TagFieldTemplateSelector`. Per-field display state (e.g. `ShowKey`) lives on `TagFieldViewModel`, because item templates can't reach the editor.
 - `GridView.SelectedItems.Add` is ignored until the grid has loaded. That's why `LibraryPage` defers selection requests, and why `LibraryViewModel` keeps a pending selection for a page that doesn't exist yet.
 - Editor controls set `AutomationProperties.Name` (field name, "Save", etc.) for accessibility. UI Automation can also drive the app with these names.
-- Tool dialogs are user controls in `App/Dialogs`. `DialogService.ShowToolAsync` maps each tool view-model type to its view, so add a case there for a new tool. The change preview is `ChangePreviewView`. `ContentDialogMaxWidth` is raised to 960 in `App.xaml`, because the WinUI default (548) clips the table.
+- Tool dialogs are user controls in `App/Dialogs`. `DialogService.ShowToolAsync` maps each tool view-model type to its view, so add a case there for a new tool. Metadata tools derive from `MetadataToolViewModel` (adds `EditsFor`); file tools derive from `FilePlanToolViewModel`. The dialog's confirm text follows `ConfirmText` as it changes. The change preview is `ChangePreviewView`. `ContentDialogMaxWidth` is raised to 960 in `App.xaml`, because the WinUI default (548) clips the table.
 - `NumberBox` values are `double` (NaN when cleared), so tool view-models bound to them use `double`.
 
 ### Tests

@@ -4,7 +4,7 @@ using PictureIt.Core.Operations;
 
 namespace PictureIt.Presentation.ViewModels.Tools;
 
-public sealed partial class FindReplaceToolViewModel : ToolViewModel
+public sealed partial class FindReplaceToolViewModel : MetadataToolViewModel
 {
     public FindReplaceToolViewModel(int photoCount)
         : base(photoCount)

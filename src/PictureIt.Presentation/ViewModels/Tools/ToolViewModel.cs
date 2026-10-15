@@ -4,10 +4,7 @@ using PictureIt.Core.Model;
 
 namespace PictureIt.Presentation.ViewModels.Tools;
 
-/// <summary>
-/// A bulk tool's options, shown in a dialog. Once confirmed, the tool turns each photo's current metadata into edits,
-/// which then go through the usual preview and write.
-/// </summary>
+/// <summary>A tool's options, shown in a dialog with a confirm button that's enabled once they're valid.</summary>
 public abstract partial class ToolViewModel : ObservableObject
 {
     protected ToolViewModel(int photoCount)
@@ -32,8 +29,6 @@ public abstract partial class ToolViewModel : ObservableObject
     /// <summary>The description recorded in history, e.g. "Shift dates by +1 h on 12 photos".</summary>
     public abstract string Description { get; }
 
-    public abstract IReadOnlyList<MetadataEdit> EditsFor(ImageMetadata metadata);
-
     protected abstract string? Validate();
 
     private void OnAnyPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -44,4 +39,13 @@ public abstract partial class ToolViewModel : ObservableObject
             OnPropertyChanged(nameof(CanApply));
         }
     }
+}
+
+/// <summary>
+/// A bulk metadata tool. Once confirmed, it turns each photo's current metadata into edits, which then go through the
+/// usual preview and write.
+/// </summary>
+public abstract class MetadataToolViewModel(int photoCount) : ToolViewModel(photoCount)
+{
+    public abstract IReadOnlyList<MetadataEdit> EditsFor(ImageMetadata metadata);
 }

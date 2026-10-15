@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Messaging;
 using PictureIt.Core.Abstractions;
 using PictureIt.Core.Model;
 using PictureIt.Presentation.Services;
@@ -28,7 +29,7 @@ public sealed class LibraryViewModelTests : IDisposable
         _dialogs = _h.Dialogs;
         _picker = _h.FolderPicker;
         _settings = _h.Settings;
-        _library = new LibraryViewModel(_picker, _settings, _summaries, _h.Editor, _h.Tools);
+        _library = _h.CreateLibrary(_summaries);
     }
 
     [Fact]
@@ -161,6 +162,26 @@ public sealed class LibraryViewModelTests : IDisposable
         await _library.OpenPathsAsync([Path.Combine(_folder, "missing.jpg")]);
 
         _library.HasFolder.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Re_reads_the_folder_and_keeps_renamed_photos_selected()
+    {
+        await _library.LoadFolderAsync(_folder);
+        var a = _library.Photos.First(p => p.FileName == "a.jpg");
+        await _library.SelectAsync([a]);
+        var renamed = Path.Combine(_folder, "renamed.jpg");
+        File.Move(a.FilePath, renamed);
+        IReadOnlyList<PhotoItemViewModel>? requested = null;
+        _library.SelectionRequested += (_, photos) => requested = photos;
+
+        _h.Messenger.Send(new FolderChangedMessage([new PictureIt.Core.History.FileMove(a.FilePath, renamed)]));
+        await Task.Yield();
+
+        _library.Photos.Select(p => p.FileName).ShouldContain("renamed.jpg");
+        _library.Photos.Select(p => p.FileName).ShouldNotContain("a.jpg");
+        requested.ShouldNotBeNull().Single().FilePath.ShouldBe(renamed);
+        _h.Organise.CurrentFolder.ShouldBe(_folder);
     }
 
     public void Dispose()

@@ -89,15 +89,20 @@ public sealed class FileBackupStore(string rootDirectory, TimeProvider? timeProv
         return manifests;
     }
 
-    public async Task RestoreAsync(Guid batchId, CancellationToken cancellationToken = default)
+    public Task RestoreAsync(Guid batchId, CancellationToken cancellationToken = default) =>
+        RestoreAsync(batchId, new Dictionary<string, string>(), cancellationToken);
+
+    public async Task RestoreAsync(Guid batchId, IReadOnlyDictionary<string, string> currentPaths, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(currentPaths);
         var manifest = await GetAsync(batchId, cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"No backup exists for batch {batchId}.");
 
         foreach (var entry in manifest.Entries)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(entry.OriginalPath)!);
-            await CopyAsync(entry.BackupPath, entry.OriginalPath, cancellationToken).ConfigureAwait(false);
+            var target = currentPaths.GetValueOrDefault(entry.OriginalPath) ?? entry.OriginalPath;
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            await CopyAsync(entry.BackupPath, target, cancellationToken).ConfigureAwait(false);
         }
     }
 

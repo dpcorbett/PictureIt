@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using PictureIt.Core.Abstractions;
 using PictureIt.Core.History;
 using PictureIt.Core.Model;
+using PictureIt.Core.Organise;
 using PictureIt.Core.Settings;
 using PictureIt.Core.Templates;
 using PictureIt.Presentation.Services;
@@ -99,12 +100,22 @@ internal sealed class Harness
         Dialogs.ShowToolAsync(Arg.Any<ToolViewModel>()).Returns(true);
         Dialogs.RunWithProgressAsync(Arg.Any<string>(), Arg.Any<Func<IProgress<WriteProgress>, CancellationToken, Task<WriteResult>>>())
             .Returns(call => call.Arg<Func<IProgress<WriteProgress>, CancellationToken, Task<WriteResult>>>()(new Progress<WriteProgress>(), CancellationToken.None));
+        Dialogs.RunWithProgressAsync(Arg.Any<string>(), Arg.Any<Func<IProgress<WriteProgress>, CancellationToken, Task<FileOperationResult>>>())
+            .Returns(call => call.Arg<Func<IProgress<WriteProgress>, CancellationToken, Task<FileOperationResult>>>()(new Progress<WriteProgress>(), CancellationToken.None));
+        Dialogs.RunWithProgressAsync(Arg.Any<string>(), Arg.Any<Func<IProgress<WriteProgress>, CancellationToken, Task<IReadOnlyList<DuplicateGroup>>>>())
+            .Returns(call => call.Arg<Func<IProgress<WriteProgress>, CancellationToken, Task<IReadOnlyList<DuplicateGroup>>>>()(new Progress<WriteProgress>(), CancellationToken.None));
         Writer.ApplyAsync(Arg.Any<EditSet>(), Arg.Any<IProgress<WriteProgress>?>(), Arg.Any<CancellationToken>())
             .Returns(call => Succeeded(call.Arg<EditSet>()));
+        Organiser.ExecuteAsync(Arg.Any<FilePlan>(), Arg.Any<IProgress<WriteProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns(call => Succeeded(call.Arg<FilePlan>()));
 
         Runner = new BatchRunner(Writer, Dialogs, History, Messenger, Time);
+        FileRunner = new FileOperationRunner(Organiser, Dialogs, History, Messenger, Time);
         Editor = new MetadataEditorViewModel(Reader, Runner, Dialogs, Settings, Messenger) { SelectionDelay = TimeSpan.Zero };
         Tools = new ToolsViewModel(Editor, Runner, Dialogs, FolderPicker, Templates);
+        Organise = new OrganiseViewModel(
+            Editor,
+            new OrganiseServices(Runner, FileRunner, Dialogs, FolderPicker, FilePicker, Reader, Summaries, Scanner, RecycleBin, History, Messenger, Time));
     }
 
     public FakeMetadataReader Reader { get; } = new();
@@ -119,6 +130,14 @@ internal sealed class Harness
 
     public IBackupStore Backups { get; } = Substitute.For<IBackupStore>();
 
+    public IFileOrganiser Organiser { get; } = Substitute.For<IFileOrganiser>();
+
+    public IDuplicateScanner Scanner { get; } = Substitute.For<IDuplicateScanner>();
+
+    public IRecycleBin RecycleBin { get; } = Substitute.For<IRecycleBin>();
+
+    public IPhotoSummaryReader Summaries { get; } = Substitute.For<IPhotoSummaryReader>();
+
     public InMemorySettingsStore Settings { get; } = new();
 
     public InMemoryHistoryStore History { get; } = new();
@@ -131,6 +150,10 @@ internal sealed class Harness
 
     public BatchRunner Runner { get; }
 
+    public FileOperationRunner FileRunner { get; }
+
+    public OrganiseViewModel Organise { get; }
+
     public MetadataEditorViewModel Editor { get; }
 
     public ToolsViewModel Tools { get; }
@@ -138,6 +161,18 @@ internal sealed class Harness
     /// <summary>The edit sets passed to the writer, in order.</summary>
     public IReadOnlyList<EditSet> Written =>
         [.. Writer.ReceivedCalls().Where(c => c.GetMethodInfo().Name == nameof(IMetadataWriter.ApplyAsync)).Select(c => (EditSet)c.GetArguments()[0]!)];
+
+    /// <summary>The file plans passed to the organiser, in order.</summary>
+    public IReadOnlyList<FilePlan> Executed =>
+        [.. Organiser.ReceivedCalls().Where(c => c.GetMethodInfo().Name == nameof(IFileOrganiser.ExecuteAsync)).Select(c => (FilePlan)c.GetArguments()[0]!)];
+
+    public HistoryViewModel CreateHistory() => new(History, Backups, Organiser, Dialogs, Messenger, Time);
+
+    public LibraryViewModel CreateLibrary(IPhotoSummaryReader? summaries = null) =>
+        new(FolderPicker, Settings, summaries ?? Summaries, Editor, Tools, Organise, Messenger);
+
+    public static FileOperationResult Succeeded(FilePlan plan) =>
+        new(plan.BatchId, [.. plan.Changes.Select(o => new FileOperationOutcome(o.SourcePath, o.TargetPath, true, null))], []);
 
     public static WriteResult Succeeded(EditSet editSet) =>
         new(editSet.BatchId, [.. editSet.Files.Select(f => new FileWriteResult(f.FilePath, true, null, []))], true);

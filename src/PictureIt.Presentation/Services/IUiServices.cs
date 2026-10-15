@@ -13,9 +13,13 @@ public interface IFolderPicker
 public interface IFilePicker
 {
     /// <summary>Returns the chosen file, or null if the user cancelled.</summary>
-    Task<string?> PickFileToOpenAsync(string extension);
+    /// <param name="extensions">The file types to show, e.g. ".csv", ".json".</param>
+    Task<string?> PickFileToOpenAsync(IReadOnlyList<string> extensions);
 
-    Task<string?> PickFileToSaveAsync(string suggestedName, string extension);
+    /// <param name="suggestedName">File name without extension.</param>
+    /// <param name="typeName">What the file is, for the type list, e.g. "CSV spreadsheet".</param>
+    /// <param name="extension">e.g. ".csv".</param>
+    Task<string?> PickFileToSaveAsync(string suggestedName, string typeName, string extension);
 }
 
 public enum UnsavedChangesChoice
@@ -59,3 +63,9 @@ public interface IThemeService
 
 /// <summary>Sent after files are written or restored, so anything showing them can reload.</summary>
 public sealed record FilesChangedMessage(IReadOnlyList<string> FilePaths);
+
+/// <summary>
+/// Sent after files are renamed, moved, copied or deleted, so views listing a folder can re-read it.
+/// <see cref="Moves"/> says where renamed or moved files went (empty for copies and deletions).
+/// </summary>
+public sealed record FolderChangedMessage(IReadOnlyList<PictureIt.Core.History.FileMove> Moves);

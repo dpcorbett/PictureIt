@@ -5,7 +5,7 @@ using PictureIt.Core.Operations;
 namespace PictureIt.Presentation.ViewModels.Tools;
 
 /// <summary>Pastes chosen groups of fields from a copied photo onto the selection.</summary>
-public sealed partial class PasteMetadataToolViewModel : ToolViewModel
+public sealed partial class PasteMetadataToolViewModel : MetadataToolViewModel
 {
     private readonly ImageMetadata _source;
 

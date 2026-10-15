@@ -28,6 +28,8 @@ public sealed class BatchRecordViewModel(BatchRecord record)
     public string Status => Record switch
     {
         { RevertedAt: { } reverted } => $"Undone {reverted.ToLocalTime().ToString("d MMM, HH:mm", CultureInfo.CurrentCulture)}",
+        { Kind: BatchKind.Recycle } => "Restore them from the Recycle Bin if needed",
+        { Kind: not BatchKind.Metadata } => string.Empty,
         { BackupDeleted: true } => "Backup cleaned up, can't undo",
         { BackedUp: false } => "No backup, can't undo",
         _ => string.Empty,
@@ -40,23 +42,26 @@ public sealed class BatchRecordViewModel(BatchRecord record)
 }
 
 /// <summary>Past batches, newest first, with undo from their backups.</summary>
-public sealed partial class HistoryViewModel : ObservableObject, IRecipient<FilesChangedMessage>
+public sealed partial class HistoryViewModel : ObservableObject, IRecipient<FilesChangedMessage>, IRecipient<FolderChangedMessage>
 {
     private readonly IHistoryStore _history;
     private readonly IBackupStore _backups;
+    private readonly IFileOrganiser _files;
     private readonly IDialogService _dialogs;
     private readonly IMessenger _messenger;
     private readonly TimeProvider _time;
 
-    public HistoryViewModel(IHistoryStore history, IBackupStore backups, IDialogService dialogs, IMessenger messenger, TimeProvider time)
+    public HistoryViewModel(IHistoryStore history, IBackupStore backups, IFileOrganiser files, IDialogService dialogs, IMessenger messenger, TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(messenger);
         _history = history;
         _backups = backups;
+        _files = files;
         _dialogs = dialogs;
         _messenger = messenger;
         _time = time;
-        messenger.Register(this);
+        messenger.Register<FilesChangedMessage>(this);
+        messenger.Register<FolderChangedMessage>(this);
         Refresh();
     }
 
@@ -77,6 +82,8 @@ public sealed partial class HistoryViewModel : ObservableObject, IRecipient<File
 
     public void Receive(FilesChangedMessage message) => Refresh();
 
+    public void Receive(FolderChangedMessage message) => Refresh();
+
     [RelayCommand]
     private async Task UndoAsync(BatchRecordViewModel item)
     {
@@ -87,12 +94,21 @@ public sealed partial class HistoryViewModel : ObservableObject, IRecipient<File
             return;
         }
 
-        var confirmed = await _dialogs.ConfirmAsync(
-            $"Undo \"{record.Description}\"?",
-            $"This puts {item.Summary} back exactly as they were before. Any changes made to them since will be lost too.",
-            "Undo");
-        if (!confirmed)
+        var question = record.Kind switch
         {
+            BatchKind.Rename => $"This gives {item.Summary} back their old names.",
+            BatchKind.Move => $"This moves {item.Summary} back to where they were.",
+            BatchKind.Copy => $"This deletes the copies of {item.Summary}. Any changes made to the copies since will be lost.",
+            _ => $"This puts {item.Summary} back exactly as they were before. Any changes made to them since will be lost too.",
+        };
+        if (!await _dialogs.ConfirmAsync($"Undo \"{record.Description}\"?", question, "Undo"))
+        {
+            return;
+        }
+
+        if (record.Kind != BatchKind.Metadata)
+        {
+            await UndoFilesAsync(record);
             return;
         }
 
@@ -104,9 +120,11 @@ public sealed partial class HistoryViewModel : ObservableObject, IRecipient<File
             return;
         }
 
+        // Photos renamed or moved since are restored where they are now.
+        var currentPaths = PathHistory.CurrentPaths(manifest.Entries.Select(e => e.OriginalPath), record.CreatedAt, _history.Load());
         try
         {
-            await _backups.RestoreAsync(record.BatchId);
+            await _backups.RestoreAsync(record.BatchId, currentPaths);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -115,7 +133,28 @@ public sealed partial class HistoryViewModel : ObservableObject, IRecipient<File
         }
 
         Update(record with { RevertedAt = _time.GetUtcNow() });
-        _messenger.Send(new FilesChangedMessage([.. manifest.Entries.Select(e => e.OriginalPath)]));
+        _messenger.Send(new FilesChangedMessage([.. currentPaths.Values]));
+    }
+
+    private async Task UndoFilesAsync(BatchRecord record)
+    {
+        FileOperationResult result;
+        try
+        {
+            result = await _files.UndoAsync(record);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await _dialogs.ShowErrorAsync("Couldn't undo", ex.Message);
+            return;
+        }
+
+        Update(record with { RevertedAt = _time.GetUtcNow() });
+        _messenger.Send(new FolderChangedMessage(record.MovesFiles ? result.Moves : []));
+        if (result.FailedCount > 0)
+        {
+            await _dialogs.ShowWriteFailuresAsync(result.ToWriteResult());
+        }
     }
 
     private void Update(BatchRecord changed)

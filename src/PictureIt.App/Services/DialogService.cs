@@ -79,12 +79,12 @@ public sealed class DialogService(WindowContext window) : IDialogService
             Spacing = 12,
             Children =
             {
-                Text($"{result.SucceededCount} of {result.Files.Count} photos were saved. These weren't:"),
+                Text($"{result.SucceededCount} of {result.Files.Count} photos were changed. These weren't:"),
                 new ScrollViewer { Content = failures, MaxHeight = 360 },
             },
         };
 
-        var dialog = Create("Some photos weren't saved", content);
+        var dialog = Create("Some photos weren't changed", content);
         dialog.CloseButtonText = "OK";
         await dialog.ShowAsync();
     }
@@ -110,6 +110,11 @@ public sealed class DialogService(WindowContext window) : IDialogService
             ShiftDatesToolViewModel shiftDates => new ShiftDatesView(shiftDates),
             RemoveMetadataToolViewModel remove => new RemoveMetadataView(remove),
             PasteMetadataToolViewModel paste => new PasteMetadataView(paste),
+            RenameToolViewModel rename => new RenameView(rename),
+            SortToolViewModel sort => new SortView(sort),
+            ExportToolViewModel export => new ExportView(export),
+            FindDuplicatesToolViewModel findDuplicates => new FindDuplicatesView(findDuplicates),
+            DuplicatesViewModel duplicates => new DuplicatesView(duplicates),
             _ => throw new ArgumentException($"No view for {tool.GetType().Name}.", nameof(tool)),
         };
 
@@ -119,7 +124,13 @@ public sealed class DialogService(WindowContext window) : IDialogService
         dialog.DefaultButton = ContentDialogButton.Primary;
         dialog.IsPrimaryButtonEnabled = tool.CanApply;
 
-        void OnToolChanged(object? sender, PropertyChangedEventArgs e) => dialog.IsPrimaryButtonEnabled = tool.CanApply;
+        // The button text can change too ("Rename 12 photos").
+        void OnToolChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            dialog.IsPrimaryButtonEnabled = tool.CanApply;
+            dialog.PrimaryButtonText = tool.ConfirmText;
+        }
+
         tool.PropertyChanged += OnToolChanged;
         try
         {

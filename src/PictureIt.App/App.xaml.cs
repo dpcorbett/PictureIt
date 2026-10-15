@@ -8,6 +8,7 @@ using PictureIt.Core.Settings;
 using PictureIt.Core.Templates;
 using PictureIt.Infrastructure.Backup;
 using PictureIt.Infrastructure.ExifTool;
+using PictureIt.Infrastructure.Files;
 using PictureIt.Infrastructure.Settings;
 using PictureIt.Infrastructure.Summary;
 using PictureIt.Presentation.Services;
@@ -82,6 +83,8 @@ public partial class App : Application
         services.AddSingleton<IBackupStore>(_ => new FileBackupStore(FileBackupStore.DefaultRootDirectory));
         services.AddSingleton<IMetadataWriter>(sp => new ExifToolWriter(sp.GetRequiredService<ExifToolProcess>(), sp.GetRequiredService<IBackupStore>()));
         services.AddSingleton<IPhotoSummaryReader, MetadataExtractorSummaryReader>();
+        services.AddSingleton<IFileOrganiser, FileOrganiser>();
+        services.AddSingleton<IDuplicateScanner, DuplicateScanner>();
         services.AddSingleton<ISettingsStore>(_ => new JsonSettingsStore(JsonSettingsStore.DefaultFilePath));
         services.AddSingleton<IHistoryStore>(_ => new JsonHistoryStore(JsonHistoryStore.DefaultFilePath));
         services.AddSingleton<ITemplateStore>(_ => new JsonTemplateStore(JsonTemplateStore.DefaultFilePath));
@@ -95,9 +98,13 @@ public partial class App : Application
         services.AddSingleton<IFilePicker>(sp => sp.GetRequiredService<FolderPickerService>());
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<IThemeService, ThemeService>();
+        services.AddSingleton<IRecycleBin, RecycleBinService>();
 
         // Presentation
         services.AddSingleton<BatchRunner>();
+        services.AddSingleton<FileOperationRunner>();
+        services.AddSingleton<OrganiseServices>();
+        services.AddSingleton<OrganiseViewModel>();
         services.AddSingleton<BackupCleanup>();
         services.AddSingleton<MetadataEditorViewModel>();
         services.AddSingleton<ToolsViewModel>();

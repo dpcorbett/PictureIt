@@ -159,7 +159,7 @@ public sealed partial class ToolsViewModel : ObservableObject
         }
     }
 
-    private async Task RunToolAsync(ToolViewModel tool)
+    private async Task RunToolAsync(MetadataToolViewModel tool)
     {
         if (await _editor.ConfirmLeaveAsync() && await _dialogs.ShowToolAsync(tool))
         {

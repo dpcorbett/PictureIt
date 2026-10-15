@@ -9,7 +9,7 @@ namespace PictureIt.Presentation.ViewModels.Tools;
 /// Fixes photo dates, either by a fixed amount or by saying when one photo was really taken
 /// (the same correction then applies to every selected photo).
 /// </summary>
-public sealed partial class ShiftDatesToolViewModel : ToolViewModel
+public sealed partial class ShiftDatesToolViewModel : MetadataToolViewModel
 {
     public ShiftDatesToolViewModel(int photoCount, ImageMetadata? reference)
         : base(photoCount)

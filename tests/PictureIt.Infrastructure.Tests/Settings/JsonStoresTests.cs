@@ -32,6 +32,39 @@ public sealed class JsonStoresTests : IDisposable
     }
 
     [Fact]
+    public void History_keeps_file_moves_and_reads_older_records_as_metadata_batches()
+    {
+        var path = _files.PathFor("history.json");
+        var store = new JsonHistoryStore(path);
+        var rename = new BatchRecord(Guid.NewGuid(), "Rename", DateTimeOffset.UnixEpoch, [@"C:.jpg"], 1, 0, false)
+        {
+            Kind = BatchKind.Rename,
+            Moves = [new FileMove(@"C:.jpg", @"C:.jpg")],
+            CreatedFolders = [@"C:
+ew"],
+        };
+
+        store.Save([rename]);
+        var loaded = store.Load().Single();
+
+        loaded.Kind.ShouldBe(BatchKind.Rename);
+        loaded.Moves.ShouldBe([new FileMove(@"C:.jpg", @"C:.jpg")]);
+        loaded.CreatedFolders.ShouldBe([@"C:
+ew"]);
+        File.ReadAllText(path).ShouldContain("\"Kind\": \"Rename\"");
+
+        // Written before Phase 4, without Kind or Moves.
+        File.WriteAllText(path, """
+            [{ "BatchId": "8f1b2c3d-0000-0000-0000-000000000001", "Description": "Old", "CreatedAt": "2024-01-01T00:00:00+00:00",
+               "FilePaths": ["C:\\a.jpg"], "SucceededCount": 1, "FailedCount": 0, "BackedUp": true }]
+            """);
+        var old = store.Load().Single();
+        old.Kind.ShouldBe(BatchKind.Metadata);
+        old.Moves.ShouldBeEmpty();
+        old.CanUndo.ShouldBeTrue();
+    }
+
+    [Fact]
     public void Templates_round_trip_with_readable_tag_keys()
     {
         var path = _files.PathFor("templates.json");

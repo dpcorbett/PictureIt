@@ -45,6 +45,23 @@ public sealed class FileBackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Restores_to_where_a_renamed_file_is_now()
+    {
+        var path = _files.Copy(TestFiles.SampleJpeg, "before.jpg");
+        var original = await File.ReadAllBytesAsync(path, Ct);
+        var batchId = Guid.NewGuid();
+        await _store.CreateAsync(batchId, [path], Ct);
+        var renamed = _files.PathFor("after.jpg");
+        File.Move(path, renamed);
+        await File.WriteAllTextAsync(renamed, "edited since", Ct);
+
+        await _store.RestoreAsync(batchId, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [path] = renamed }, Ct);
+
+        (await File.ReadAllBytesAsync(renamed, Ct)).ShouldBe(original);
+        File.Exists(path).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task Records_a_manifest_that_can_be_read_back()
     {
         var a = _files.Copy(TestFiles.SampleJpeg, "a.jpg");

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="PictureIt.App.Dialogs.SortView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:dialogs="using:PictureIt.App.Dialogs">
+
+  <StackPanel Spacing="12" Width="680">
+    <TextBlock Text="{x:Bind Tool.PhotoCountText}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+    <Grid ColumnSpacing="8">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <TextBox Header="Sort into" Text="{x:Bind Tool.Destination, Mode=TwoWay}" AutomationProperties.Name="Folder to sort into" />
+      <Button Grid.Column="1" Content="Choose…" Command="{x:Bind Tool.ChooseDestinationCommand}" VerticalAlignment="Bottom" />
+    </Grid>
+
+    <StackPanel Spacing="4">
+      <Grid ColumnSpacing="8">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBox Header="Folders" Text="{x:Bind Tool.Pattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
+                 AutomationProperties.Name="Folder pattern" />
+        <DropDownButton Grid.Column="1" Content="Insert" VerticalAlignment="Bottom" AutomationProperties.Name="Insert a token">
+          <DropDownButton.Flyout>
+            <MenuFlyout x:Name="TokenMenu" Placement="BottomEdgeAlignedRight" />
+          </DropDownButton.Flyout>
+        </DropDownButton>
+      </Grid>
+      <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                 Text="Use \ between folders: {DateTaken:yyyy}\{DateTaken:MM} makes a folder for each year with one for each month inside. File names stay the same." />
+    </StackPanel>
+
+    <ToggleSwitch Header="Originals" OffContent="Move them" OnContent="Copy them, leaving the originals where they are"
+                  IsOn="{x:Bind Tool.Copy, Mode=TwoWay}" />
+
+    <dialogs:FilePlanPreview Tool="{x:Bind Tool}" ListHeight="220" />
+  </StackPanel>
+</UserControl>

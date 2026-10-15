@@ -84,7 +84,7 @@ public sealed partial class TemplatesViewModel : ObservableObject
     private async Task ExportAsync(TemplateItemViewModel item)
     {
         ArgumentNullException.ThrowIfNull(item);
-        if (await _files.PickFileToSaveAsync(item.Name, FileExtension) is { } path)
+        if (await _files.PickFileToSaveAsync(item.Name, "PictureIt template", FileExtension) is { } path)
         {
             try
             {
@@ -100,7 +100,7 @@ public sealed partial class TemplatesViewModel : ObservableObject
     [RelayCommand]
     private async Task ImportAsync()
     {
-        if (await _files.PickFileToOpenAsync(FileExtension) is not { } path)
+        if (await _files.PickFileToOpenAsync([FileExtension]) is not { } path)
         {
             return;
         }

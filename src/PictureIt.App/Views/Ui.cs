@@ -12,4 +12,7 @@ public static class Ui
     public static Visibility VisibleIfText(string? value) => string.IsNullOrEmpty(value) ? Visibility.Collapsed : Visibility.Visible;
 
     public static bool Not(bool value) => !value;
+
+    /// <summary>Faded for rows that won't change (e.g. in a rename preview).</summary>
+    public static double DimIf(bool value) => value ? 0.5 : 1.0;
 }

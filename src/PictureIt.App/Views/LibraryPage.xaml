@@ -129,6 +129,44 @@
             <FontIcon Glyph="&#xE72E;" />
           </AppBarButton.Icon>
         </AppBarButton>
+        <AppBarSeparator />
+        <!-- Organising: rename and sort the selection; export it; import into and find duplicates in the folder -->
+        <AppBarButton Label="Organise" AutomationProperties.Name="Organise">
+          <AppBarButton.Icon>
+            <FontIcon Glyph="&#xE8B7;" />
+          </AppBarButton.Icon>
+          <AppBarButton.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedRight">
+              <MenuFlyoutItem Text="Rename…" Command="{x:Bind ViewModel.Organise.RenameCommand}">
+                <MenuFlyoutItem.Icon>
+                  <FontIcon Glyph="&#xE8AC;" />
+                </MenuFlyoutItem.Icon>
+              </MenuFlyoutItem>
+              <MenuFlyoutItem Text="Sort into folders…" Command="{x:Bind ViewModel.Organise.SortIntoFoldersCommand}">
+                <MenuFlyoutItem.Icon>
+                  <FontIcon Glyph="&#xE8DE;" />
+                </MenuFlyoutItem.Icon>
+              </MenuFlyoutItem>
+              <MenuFlyoutSeparator />
+              <MenuFlyoutItem Text="Export metadata…" Command="{x:Bind ViewModel.Organise.ExportMetadataCommand}">
+                <MenuFlyoutItem.Icon>
+                  <FontIcon Glyph="&#xEDE1;" />
+                </MenuFlyoutItem.Icon>
+              </MenuFlyoutItem>
+              <MenuFlyoutItem Text="Import metadata…" Command="{x:Bind ViewModel.Organise.ImportMetadataCommand}">
+                <MenuFlyoutItem.Icon>
+                  <FontIcon Glyph="&#xE8B5;" />
+                </MenuFlyoutItem.Icon>
+              </MenuFlyoutItem>
+              <MenuFlyoutSeparator />
+              <MenuFlyoutItem Text="Find duplicates…" Command="{x:Bind ViewModel.Organise.FindDuplicatesCommand}">
+                <MenuFlyoutItem.Icon>
+                  <FontIcon Glyph="&#xE16F;" />
+                </MenuFlyoutItem.Icon>
+              </MenuFlyoutItem>
+            </MenuFlyout>
+          </AppBarButton.Flyout>
+        </AppBarButton>
       </CommandBar>
       <StackPanel Orientation="Horizontal" Spacing="4">
         <SplitButton Command="{x:Bind ViewModel.OpenFolderCommand}" ToolTipService.ToolTip="Open a folder (Ctrl+O)">

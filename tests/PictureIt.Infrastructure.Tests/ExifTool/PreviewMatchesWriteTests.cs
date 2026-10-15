@@ -1,6 +1,7 @@
 using PictureIt.Core.Catalog;
 using PictureIt.Core.Model;
 using PictureIt.Core.Operations;
+using PictureIt.Core.Organise;
 using PictureIt.Core.Templates;
 using PictureIt.Infrastructure.Backup;
 using PictureIt.Infrastructure.ExifTool;
@@ -103,6 +104,37 @@ public sealed class PreviewMatchesWriteTests : IDisposable
         ]);
 
         await Apply(path, _ => template.ToEdits());
+    }
+
+    [Fact]
+    public async Task An_unchanged_export_imports_as_no_changes()
+    {
+        // Every tag's exported text must read back as equal to the photo's, or a round trip would rewrite it.
+        var path = _files.Copy(TestFiles.SampleJpeg);
+        var photo = await _reader.ReadAsync(path, Ct);
+
+        foreach (var format in new[] { ExportFormat.Csv, ExportFormat.Json })
+        {
+            var text = MetadataExport.Write([photo], MetadataExport.Columns([photo], ExportFields.All), format);
+            var row = MetadataImport.Parse(text, format == ExportFormat.Json ? ".json" : ".csv").Rows.Single();
+
+            var edits = MetadataImport.EditsFor(row, photo);
+            edits.Edits.ShouldBeEmpty($"{format}: {string.Join(", ", edits.Edits.Select(e => e.Key))}");
+            edits.Problems.ShouldBeEmpty();
+        }
+    }
+
+    [Fact]
+    public async Task Import_edited_cells()
+    {
+        var path = _files.Copy(TestFiles.SampleJpeg);
+        var csv = $"""
+            SourceFile,XMP-dc:Title,MWG:Description,MWG:Keywords,MWG:City,MWG:DateTimeOriginal,MWG:Rating
+            {path},Big Ben,"Line one, with a comma",London; Thames; Night,London,2024:06:15 15:00:00,4
+            """;
+        var row = MetadataImport.ParseCsv(csv).Rows.Single();
+
+        await Apply(path, m => MetadataImport.EditsFor(row, m).Edits);
     }
 
     private async Task Apply(string path, Func<ImageMetadata, IReadOnlyList<MetadataEdit>> buildEdits, bool expectChanges = true)
