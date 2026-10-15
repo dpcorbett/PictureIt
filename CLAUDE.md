@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-PictureIt is a Windows desktop app for viewing and editing photo metadata (EXIF/IPTC/XMP), with **bulk editing** as the core feature. It's built on .NET 10 with a WinUI 3 (Windows App SDK) UI. Development follows a phased plan (scaffold → metadata engine → app shell → bulk editing → organising → search → location → advanced → packaging). Only Phase 0 (the scaffold) is complete.
+PictureIt is a Windows desktop app for viewing and editing photo metadata (EXIF/IPTC/XMP), with **bulk editing** as the core feature. It's built on .NET 10 with a WinUI 3 (Windows App SDK) UI. Development follows a phased plan (scaffold → metadata engine → app shell → bulk editing → organising → search → location → advanced → packaging). Phases 0 (scaffold) and 1 (metadata engine) are done. The UI is still a placeholder window.
 
 ## Commands
 
@@ -28,7 +28,21 @@ Tests use xUnit v3 on the **Microsoft Testing Platform** (opted in via `global.j
 
 Design rule: every metadata write goes through one pipeline. **Build an `EditSet` → show a `ChangePreview` → user confirms → write with backup → record in history (undoable).** Don't add write paths that skip the preview or backup steps.
 
-Tags are identified by `TagKey` (`Core/Model/TagKey.cs`), using ExifTool's `Group:Name` notation and compared case-insensitively.
+Tags are identified by `TagKey` (`Core/Model/TagKey.cs`), using ExifTool's group-1 `Group:Name` notation (`IFD0:Model`, `ExifIFD:ExposureTime`, `XMP-dc:Subject`) and compared case-insensitively.
+
+### Metadata engine (Infrastructure)
+
+- **ExifTool is downloaded at build time** by `build/ExifTool.targets`. It's pinned to one version, checked by SHA-256, cached in `tools/exiftool/` (gitignored) and copied to `exiftool\` in every output that references Infrastructure. The first build needs network access. To upgrade, change the version and hash in that file.
+- `ExifToolProcess` is one long-lived `-stay_open` process shared by everything. Commands run one at a time and the process restarts after a crash or a cancelled command. Each argument is one line, so **arguments can't contain line breaks**. `ExifToolArguments` sends multi-line values, and values with leading or trailing whitespace, through a temp file (`-TAG<=FILE`).
+- `ExifToolReader` is the authoritative reader for editing, because its keys match what the writer writes. `MetadataExtractorSummaryReader` is a fast, read-only reader for thumbnails and the status bar. Its directory names differ from ExifTool's groups, so never use its output to key edits.
+- `ExifToolWriter` backs up the whole batch through `IBackupStore` before changing anything. It then writes one file per ExifTool command with `-overwrite_original_in_place`, and with `-P` by default to keep the modified date. Failures are reported per file. "Unchanged" with a warning (e.g. an unknown tag) counts as a failure.
+- `FileBackupStore` keeps one folder per batch with a `manifest.json`, under `%LocalAppData%\PictureIt\backups` by default.
+- ExifTool reads almost anything: a text file renamed `.jpg` reads as TXT, and a corrupt JPEG reads with an `ExifTool:Warning` tag. Only files like empty ones produce `ExifTool:Error`, which the reader turns into a per-file failure.
+
+### Tests
+
+- `tests/TestData/sample.jpg` has known tags; the full list is in the doc comment on `TestFiles.SampleJpeg`. `sample.png` has none. Tests copy samples into a temp folder through `TestFiles` and never write to `TestData`.
+- ExifTool tests share one process through `[Collection(ExifToolCollectionDefinition.Name)]`. `ExifToolFixture.ImageDataHashAsync` hashes the pixel data only, which is how tests prove writes are lossless.
 
 ## Build conventions
 

@@ -12,4 +12,10 @@
     <PackageReference Include="MetadataExtractor" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="PictureIt.Infrastructure.Tests" />
+  </ItemGroup>
+
+  <Import Project="..\..\build\ExifTool.targets" />
+
 </Project>
