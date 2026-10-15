@@ -179,6 +179,10 @@ public sealed partial class LibraryPage : Page
         TemplatesMenu.Items.Add(manage);
     }
 
+    private void OnExpandAllSections(object sender, RoutedEventArgs e) => ViewModel.Editor.SetAllSectionsExpandedCommand.Execute(true);
+
+    private void OnCollapseAllSections(object sender, RoutedEventArgs e) => ViewModel.Editor.SetAllSectionsExpandedCommand.Execute(false);
+
     private void OnRecentMenuOpening(object sender, object e)
     {
         RecentMenu.Items.Clear();

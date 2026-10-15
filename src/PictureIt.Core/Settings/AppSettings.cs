@@ -1,3 +1,5 @@
+using PictureIt.Core.Catalog;
+
 namespace PictureIt.Core.Settings;
 
 public enum AppTheme
@@ -19,6 +21,12 @@ public sealed record AppSettings
 
     /// <summary>Show "IFD0:Model" style keys next to friendly names in the editor.</summary>
     public bool ShowTagKeys { get; init; }
+
+    /// <summary>Show every tag in the editor, not just the common fields.</summary>
+    public bool ShowAllTags { get; init; } = true;
+
+    /// <summary>Editor sections the user has collapsed. The long, technical ones start collapsed.</summary>
+    public IReadOnlyList<TagCategory> CollapsedSections { get; init; } = [TagCategory.MakerNotes, TagCategory.File];
 
     /// <summary>Backups older than this are deleted at startup; their batches can then no longer be undone. 0 keeps them forever.</summary>
     public int BackupRetentionDays { get; init; } = 30;

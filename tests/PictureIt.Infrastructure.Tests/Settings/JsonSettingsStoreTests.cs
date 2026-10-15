@@ -1,3 +1,4 @@
+using PictureIt.Core.Catalog;
 using PictureIt.Core.Settings;
 using PictureIt.Infrastructure.Settings;
 
@@ -11,13 +12,21 @@ public sealed class JsonSettingsStoreTests : IDisposable
     public void Round_trips_settings()
     {
         var store = new JsonSettingsStore(_files.PathFor(@"nested\settings.json"));
-        var settings = new AppSettings { Theme = AppTheme.Dark, ShowTagKeys = true }.WithRecentFolder(@"C:\photos");
+        var settings = new AppSettings
+        {
+            Theme = AppTheme.Dark,
+            ShowTagKeys = true,
+            ShowAllTags = false,
+            CollapsedSections = [TagCategory.Camera],
+        }.WithRecentFolder(@"C:\photos");
 
         store.Save(settings);
         var loaded = store.Load();
 
         loaded.Theme.ShouldBe(AppTheme.Dark);
         loaded.ShowTagKeys.ShouldBeTrue();
+        loaded.ShowAllTags.ShouldBeFalse();
+        loaded.CollapsedSections.ShouldBe([TagCategory.Camera]);
         loaded.RecentFolders.ShouldBe([@"C:\photos"]);
     }
 
@@ -28,6 +37,8 @@ public sealed class JsonSettingsStoreTests : IDisposable
 
         settings.Theme.ShouldBe(AppTheme.System);
         settings.RecentFolders.ShouldBeEmpty();
+        settings.ShowAllTags.ShouldBeTrue();
+        settings.CollapsedSections.ShouldBe([TagCategory.MakerNotes, TagCategory.File]);
     }
 
     [Fact]

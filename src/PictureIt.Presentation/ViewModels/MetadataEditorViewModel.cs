@@ -24,6 +24,7 @@ public sealed partial class MetadataEditorViewModel : ObservableObject, IRecipie
     private readonly List<TagFieldViewModel> _allFields = [];
     private readonly Dictionary<string, (DateTime Stamp, ImageMetadata Metadata)> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly bool _initialized;
+    private readonly HashSet<TagCategory> _collapsed;
     private IReadOnlyList<ImageMetadata> _photos = [];
     private int _loadVersion;
 
@@ -40,7 +41,10 @@ public sealed partial class MetadataEditorViewModel : ObservableObject, IRecipie
         _dialogs = dialogs;
         _settings = settings;
         FilterText = string.Empty;
-        ShowTagKeys = settings.Load().ShowTagKeys;
+        var saved = settings.Load();
+        ShowTagKeys = saved.ShowTagKeys;
+        ShowAllTags = saved.ShowAllTags;
+        _collapsed = [.. saved.CollapsedSections];
         messenger.Register(this);
         _initialized = true;
     }
@@ -355,8 +359,12 @@ public sealed partial class MetadataEditorViewModel : ObservableObject, IRecipie
 
     private void RefreshGroups()
     {
+        // A filter searches every tag, and opens every section with a match.
         var filter = FilterText.Trim();
-        var visible = filter.Length == 0 ? _allFields : _allFields.Where(f => f.Matches(filter));
+        var filtering = filter.Length > 0;
+        var visible = filtering
+            ? _allFields.Where(f => f.Matches(filter))
+            : ShowAllTags ? _allFields : _allFields.Where(f => f.Category == TagCategory.Common);
 
         Groups.Clear();
         foreach (var group in visible.GroupBy(f => f.Category).OrderBy(g => g.Key))
@@ -365,7 +373,46 @@ public sealed partial class MetadataEditorViewModel : ObservableObject, IRecipie
             var fields = group.Key == TagCategory.Common
                 ? (IEnumerable<TagFieldViewModel>)group
                 : group.OrderBy(f => f.DisplayName, StringComparer.CurrentCultureIgnoreCase).ThenBy(f => f.KeyText, StringComparer.Ordinal);
-            Groups.Add(new TagGroupViewModel(group.Key, fields));
+            var expanded = filtering || !_collapsed.Contains(group.Key);
+            Groups.Add(new TagGroupViewModel(group.Key, fields, expanded, filtering ? null : OnSectionToggled));
+        }
+
+        OnPropertyChanged(nameof(HiddenTagCount));
+    }
+
+    /// <summary>How many tags "All tags" would add, for the toggle's tooltip.</summary>
+    public int HiddenTagCount => ShowAllTags ? 0 : _allFields.Count(f => f.Category != TagCategory.Common);
+
+    /// <summary>Show every tag, or just the common fields.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HiddenTagCount))]
+    public partial bool ShowAllTags { get; set; }
+
+    partial void OnShowAllTagsChanged(bool value)
+    {
+        if (_initialized)
+        {
+            RefreshGroups();
+            _settings.Save(_settings.Load() with { ShowAllTags = value });
+        }
+    }
+
+    /// <summary>Opens or closes every section except the common fields.</summary>
+    [RelayCommand]
+    private void SetAllSectionsExpanded(bool expanded)
+    {
+        foreach (var group in Groups.Where(g => g.Category != TagCategory.Common))
+        {
+            group.IsExpanded = expanded;
+        }
+    }
+
+    private void OnSectionToggled(TagGroupViewModel group)
+    {
+        var changed = group.IsExpanded ? _collapsed.Remove(group.Category) : _collapsed.Add(group.Category);
+        if (changed)
+        {
+            _settings.Save(_settings.Load() with { CollapsedSections = [.. _collapsed.Order()] });
         }
     }
 

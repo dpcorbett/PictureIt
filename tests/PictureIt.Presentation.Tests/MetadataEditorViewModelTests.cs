@@ -204,6 +204,11 @@ public sealed class MetadataEditorViewModelTests
         Editor.FilterText = "changed";
         Editor.Groups.SelectMany(g => g.Fields).Select(f => f.KeyText).ShouldBe(["IFD0:Model"]);
 
+        // A filter also searches sections that are closed, and opens them.
+        Editor.FilterText = "jpeg";
+        Editor.Groups.Single().Category.ShouldBe(TagCategory.File);
+        Editor.Groups.Single().Fields.Select(f => f.KeyText).ShouldBe(["File:FileType"]);
+
         Editor.FilterText = string.Empty;
         Field("IFD0:Model").Value.ShouldBe("Changed");
         Editor.IsDirty.ShouldBeTrue();
@@ -303,6 +308,69 @@ public sealed class MetadataEditorViewModelTests
         _h.Reader.ReadPaths.ShouldBe([Metadata.Path, B, B]);
     }
 
+    [Fact]
+    public async Task Technical_sections_start_closed_with_their_count_showing()
+    {
+        await Editor.LoadAsync(Metadata.Path);
+
+        var file = Editor.Groups.Single(g => g.Category == TagCategory.File);
+        file.IsExpanded.ShouldBeFalse();
+        file.Fields.ShouldBeEmpty();
+        file.CountText.ShouldBe("1");
+        Editor.Groups.Single(g => g.Category == TagCategory.Camera).Fields.ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public async Task Opening_and_closing_sections_is_remembered()
+    {
+        await Editor.LoadAsync(Metadata.Path);
+        var camera = Editor.Groups.Single(g => g.Category == TagCategory.Camera);
+
+        camera.ToggleCommand.Execute(null);
+
+        camera.Fields.ShouldBeEmpty();
+        camera.HeaderLabel.ShouldEndWith("collapsed");
+        _h.Settings.Current.CollapsedSections.ShouldContain(TagCategory.Camera);
+
+        Editor.Groups.Single(g => g.Category == TagCategory.File).IsExpanded = true;
+        _h.Settings.Current.CollapsedSections.ShouldNotContain(TagCategory.File);
+
+        // Reloading keeps the choices.
+        await Editor.LoadAsync(Metadata.Path);
+        Editor.Groups.Single(g => g.Category == TagCategory.Camera).IsExpanded.ShouldBeFalse();
+        Editor.Groups.Single(g => g.Category == TagCategory.File).IsExpanded.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Open_and_close_all_sections_leaves_common_fields_open()
+    {
+        await Editor.LoadAsync(Metadata.Path);
+
+        Editor.SetAllSectionsExpandedCommand.Execute(false);
+
+        Editor.Groups.Where(g => g.Category != TagCategory.Common).ShouldAllBe(g => !g.IsExpanded);
+        Editor.Groups[0].IsExpanded.ShouldBeTrue();
+
+        Editor.SetAllSectionsExpandedCommand.Execute(true);
+        Editor.Groups.ShouldAllBe(g => g.IsExpanded);
+    }
+
+    [Fact]
+    public async Task Can_show_just_the_common_fields_and_remembers_it()
+    {
+        await Editor.LoadAsync(Metadata.Path);
+
+        Editor.ShowAllTags = false;
+
+        Editor.Groups.Single().Category.ShouldBe(TagCategory.Common);
+        Editor.HiddenTagCount.ShouldBe(Metadata.Sample().Tags.Count(t => TagCatalog.FindCommonField(t.Key) is null));
+        _h.Settings.Current.ShowAllTags.ShouldBeFalse();
+
+        Editor.ShowAllTags = true;
+        Editor.Groups.Count.ShouldBeGreaterThan(1);
+        Editor.HiddenTagCount.ShouldBe(0);
+    }
+
     private TagFieldViewModel Field(string key) =>
-        Editor.Groups.SelectMany(g => g.Fields).Single(f => f.Key == TagKey.Parse(key));
+        Editor.Groups.SelectMany(g => g.Items).Single(f => f.Key == TagKey.Parse(key));
 }

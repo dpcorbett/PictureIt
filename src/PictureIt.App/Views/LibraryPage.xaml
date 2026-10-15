@@ -286,10 +286,14 @@
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*" />
           <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
-        <AutoSuggestBox PlaceholderText="Filter tags" QueryIcon="Find"
+        <AutoSuggestBox PlaceholderText="Filter all tags" QueryIcon="Find"
                         Text="{x:Bind ViewModel.Editor.FilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-        <ToggleButton Grid.Column="1" IsChecked="{x:Bind ViewModel.Editor.ShowTagKeys, Mode=TwoWay}" ToolTipService.ToolTip="Show tag keys"
+        <!-- Off: just the common fields. On: every tag, in sections that can be collapsed. -->
+        <ToggleButton Grid.Column="1" Content="All tags" IsChecked="{x:Bind ViewModel.Editor.ShowAllTags, Mode=TwoWay}"
+                      ToolTipService.ToolTip="Show every tag, not just the common fields" AutomationProperties.Name="All tags" />
+        <ToggleButton Grid.Column="2" IsChecked="{x:Bind ViewModel.Editor.ShowTagKeys, Mode=TwoWay}" ToolTipService.ToolTip="Show tag keys"
                       AutomationProperties.Name="Show tag keys">
           <FontIcon Glyph="&#xE943;" FontSize="16" />
         </ToggleButton>
@@ -313,9 +317,29 @@
         <ListView.GroupStyle>
           <GroupStyle>
             <GroupStyle.HeaderTemplate>
+              <!-- Click to open or close the section; right-click for all sections. -->
               <DataTemplate x:DataType="vm:TagGroupViewModel">
-                <TextBlock Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}"
-                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                <Button Command="{x:Bind ToggleCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                        Background="Transparent" BorderThickness="0" Padding="0,4" AutomationProperties.Name="{x:Bind HeaderLabel, Mode=OneWay}">
+                  <Button.ContextFlyout>
+                    <MenuFlyout>
+                      <MenuFlyoutItem Text="Open all sections" Click="OnExpandAllSections" />
+                      <MenuFlyoutItem Text="Close all sections" Click="OnCollapseAllSections" />
+                    </MenuFlyout>
+                  </Button.ContextFlyout>
+                  <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Glyph="{x:Bind Chevron, Mode=OneWay}" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                    <TextBlock Grid.Column="1" Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}"
+                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                    <TextBlock Grid.Column="2" Text="{x:Bind CountText}" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                  </Grid>
+                </Button>
               </DataTemplate>
             </GroupStyle.HeaderTemplate>
           </GroupStyle>
