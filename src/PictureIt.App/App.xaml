@@ -8,6 +8,9 @@
       <ResourceDictionary.MergedDictionaries>
         <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
       </ResourceDictionary.MergedDictionaries>
+
+      <!-- The default (548) is too narrow for the change preview table. -->
+      <x:Double x:Key="ContentDialogMaxWidth">960</x:Double>
     </ResourceDictionary>
   </Application.Resources>
 </Application>

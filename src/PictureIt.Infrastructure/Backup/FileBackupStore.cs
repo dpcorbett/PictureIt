@@ -69,6 +69,26 @@ public sealed class FileBackupStore(string rootDirectory, TimeProvider? timeProv
         return await JsonSerializer.DeserializeAsync<BackupManifest>(stream, JsonOptions, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<BackupManifest>> ListAsync(CancellationToken cancellationToken = default)
+    {
+        if (!Directory.Exists(RootDirectory))
+        {
+            return [];
+        }
+
+        var manifests = new List<BackupManifest>();
+        foreach (var directory in Directory.EnumerateDirectories(RootDirectory))
+        {
+            if (Guid.TryParseExact(Path.GetFileName(directory), "N", out var batchId)
+                && await GetAsync(batchId, cancellationToken).ConfigureAwait(false) is { } manifest)
+            {
+                manifests.Add(manifest);
+            }
+        }
+
+        return manifests;
+    }
+
     public async Task RestoreAsync(Guid batchId, CancellationToken cancellationToken = default)
     {
         var manifest = await GetAsync(batchId, cancellationToken).ConfigureAwait(false)

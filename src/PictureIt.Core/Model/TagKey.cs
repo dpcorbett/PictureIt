@@ -5,6 +5,7 @@ namespace PictureIt.Core.Model;
 /// e.g. <c>EXIF:Model</c>, <c>XMP-dc:Subject</c> or <c>IPTC:Keywords</c>.
 /// Comparison is case-insensitive, matching ExifTool's own tag matching.
 /// </summary>
+[System.Text.Json.Serialization.JsonConverter(typeof(TagKeyJsonConverter))]
 public sealed record TagKey
 {
     public TagKey(string group, string name)
@@ -64,6 +65,19 @@ public sealed record TagKey
         HashCode.Combine(
             StringComparer.OrdinalIgnoreCase.GetHashCode(Group),
             StringComparer.OrdinalIgnoreCase.GetHashCode(Name));
+
+    /// <summary>The group meaning "any group" in a pattern.</summary>
+    public const string AnyGroup = "*";
+
+    /// <summary>
+    /// True for a removal pattern rather than one tag: the name is <c>all</c> or contains <c>*</c> (e.g. <c>MakerNotes:all</c>,
+    /// <c>*:gps*</c>), or the group is <see cref="AnyGroup"/>.
+    /// </summary>
+    public bool IsPattern =>
+        Group == AnyGroup || Name.Contains('*', StringComparison.Ordinal) || Name.Equals("all", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>How ExifTool spells this tag in an argument: patterns in any group drop the group (<c>gps*</c>).</summary>
+    public string ToExifToolName() => Group == AnyGroup ? Name : ToString();
 
     public override string ToString() => $"{Group}:{Name}";
 }

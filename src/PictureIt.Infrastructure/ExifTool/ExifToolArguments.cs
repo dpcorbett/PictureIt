@@ -1,3 +1,4 @@
+using PictureIt.Core.Catalog;
 using PictureIt.Core.Model;
 
 namespace PictureIt.Infrastructure.ExifTool;
@@ -19,11 +20,20 @@ internal static class ExifToolArguments
 
         foreach (var edit in edits)
         {
-            var tag = edit.Key.ToString();
+            // "#" asks ExifTool to take the value as-is (e.g. 51.5007) instead of converting from display form.
+            var tag = edit.Key.ToExifToolName() + (edit.Raw ? "#" : string.Empty);
             switch (edit.Kind)
             {
                 case EditKind.Remove:
                     args.Add($"-{tag}=");
+
+                    // "Remove everything" keeps the colour profile ("--" excludes it from the deletion);
+                    // TagPattern.Matches leaves it out of previews to match.
+                    if (TagPattern.IsRemoveEverything(edit.Key))
+                    {
+                        args.Add($"--{TagPattern.ColourProfileGroup}:all");
+                    }
+
                     break;
 
                 case EditKind.Set:

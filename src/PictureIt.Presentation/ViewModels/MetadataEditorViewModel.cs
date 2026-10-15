@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using PictureIt.Core.Abstractions;
 using PictureIt.Core.Catalog;
 using PictureIt.Core.Model;
@@ -10,51 +11,86 @@ using PictureIt.Presentation.Services;
 namespace PictureIt.Presentation.ViewModels;
 
 /// <summary>
-/// Shows one photo's tags grouped into sections, tracks edits, and saves them through the standard pipeline:
-/// build an EditSet, preview it, confirm, then write (with backup).
+/// Shows the tags of the selected photos, grouped into sections, and saves edits through <see cref="BatchRunner"/>.
+/// With several photos selected, fields that differ are "mixed" (see <see cref="TagFieldViewModel"/>), and an edit
+/// applies to every selected photo.
 /// </summary>
-public sealed partial class MetadataEditorViewModel : ObservableObject
+public sealed partial class MetadataEditorViewModel : ObservableObject, IRecipient<FilesChangedMessage>
 {
     private readonly IMetadataReader _reader;
-    private readonly IMetadataWriter _writer;
+    private readonly BatchRunner _runner;
     private readonly IDialogService _dialogs;
     private readonly ISettingsStore _settings;
     private readonly List<TagFieldViewModel> _allFields = [];
-    private ImageMetadata? _metadata;
+    private readonly Dictionary<string, (DateTime Stamp, ImageMetadata Metadata)> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly bool _initialized;
+    private IReadOnlyList<ImageMetadata> _photos = [];
     private int _loadVersion;
 
     public MetadataEditorViewModel(
         IMetadataReader reader,
-        IMetadataWriter writer,
+        BatchRunner runner,
         IDialogService dialogs,
-        ISettingsStore settings)
+        ISettingsStore settings,
+        IMessenger messenger)
     {
+        ArgumentNullException.ThrowIfNull(messenger);
         _reader = reader;
-        _writer = writer;
+        _runner = runner;
         _dialogs = dialogs;
         _settings = settings;
         FilterText = string.Empty;
         ShowTagKeys = settings.Load().ShowTagKeys;
+        messenger.Register(this);
         _initialized = true;
     }
 
-    private readonly bool _initialized;
+    /// <summary>
+    /// How long to wait before reading a multi-photo selection, so dragging or shift-clicking across a grid
+    /// doesn't queue a read for every intermediate selection.
+    /// </summary>
+    public TimeSpan SelectionDelay { get; set; } = TimeSpan.FromMilliseconds(200);
 
     /// <summary>Sections with the fields that pass <see cref="FilterText"/>.</summary>
     public ObservableCollection<TagGroupViewModel> Groups { get; } = [];
 
-    public string? FilePath => _metadata?.FilePath;
+    /// <summary>The paths most recently asked for, whether or not they've finished loading.</summary>
+    public IReadOnlyList<string> RequestedPaths { get; private set; } = [];
 
-    public string FileName => FilePath is null ? string.Empty : Path.GetFileName(FilePath);
+    /// <summary>The loaded photos' metadata by path, for tools that work on the selection.</summary>
+    public IReadOnlyDictionary<string, ImageMetadata> LoadedMetadata =>
+        _photos.ToDictionary(p => p.FilePath, StringComparer.OrdinalIgnoreCase);
 
-    public bool HasPhoto => _metadata is not null;
+    public int PhotoCount => _photos.Count;
+
+    /// <summary>The single loaded photo's path, or null when none or several are loaded.</summary>
+    public string? FilePath => _photos.Count == 1 ? _photos[0].FilePath : null;
+
+    /// <summary>"Big Ben.jpg", or "12 photos".</summary>
+    public string Title => _photos.Count switch
+    {
+        0 => string.Empty,
+        1 => Path.GetFileName(_photos[0].FilePath),
+        var count => $"{count} photos",
+    };
+
+    public bool HasPhoto => _photos.Count > 0;
+
+    public bool IsMultiple => _photos.Count > 1;
 
     [ObservableProperty]
     public partial bool IsLoading { get; private set; }
 
-    /// <summary>Explains why there's nothing to edit: no selection, several photos, or a read error.</summary>
+    /// <summary>Explains an empty editor: no selection, or the photos couldn't be read.</summary>
     [ObservableProperty]
     public partial string? Message { get; private set; }
+
+    /// <summary>Some selected photos couldn't be read and are left out; the others are shown.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasWarning))]
+    public partial string? Warning { get; private set; }
+
+    public bool HasWarning => Warning is not null;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(RevertCommand))]
@@ -66,58 +102,35 @@ public sealed partial class MetadataEditorViewModel : ObservableObject
     [ObservableProperty]
     public partial string FilterText { get; set; }
 
-    /// <summary>Shows the metadata for the selected photos; editing needs exactly one.</summary>
+    /// <summary>Shows the metadata for the selected photos.</summary>
     public async Task ShowSelectionAsync(IReadOnlyList<string> filePaths)
     {
         ArgumentNullException.ThrowIfNull(filePaths);
-        switch (filePaths.Count)
-        {
-            case 0:
-                Clear("Select a photo to see its metadata.");
-                break;
-            case 1:
-                await LoadAsync(filePaths[0]);
-                break;
-            default:
-                Clear($"{filePaths.Count} photos selected. Select a single photo to edit its metadata.");
-                break;
-        }
-    }
-
-    public async Task LoadAsync(string filePath)
-    {
         var version = ++_loadVersion;
-        IsLoading = true;
-        try
+        RequestedPaths = filePaths;
+        if (filePaths.Count == 0)
         {
-            var metadata = await _reader.ReadAsync(filePath);
+            Clear("Select a photo to see its metadata.");
+            return;
+        }
 
-            // A newer selection arrived while this one was loading.
+        IsLoading = true;
+        if (filePaths.Count > 1 && SelectionDelay > TimeSpan.Zero)
+        {
+            await Task.Delay(SelectionDelay);
             if (version != _loadVersion)
             {
                 return;
             }
+        }
 
-            Show(metadata);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            if (version == _loadVersion)
-            {
-                Clear($"Couldn't read {Path.GetFileName(filePath)}: {ex.Message}");
-            }
-        }
-        finally
-        {
-            if (version == _loadVersion)
-            {
-                IsLoading = false;
-            }
-        }
+        await LoadAsync(filePaths, version);
     }
 
+    public Task LoadAsync(string filePath) => ShowSelectionAsync([filePath]);
+
     /// <summary>
-    /// Call before moving away from the current photo. Asks about unsaved changes; returns false if the user
+    /// Call before moving away from the current photos. Asks about unsaved changes; returns false if the user
     /// cancels (or saving fails), in which case the caller should stay put.
     /// </summary>
     public async Task<bool> ConfirmLeaveAsync()
@@ -127,7 +140,7 @@ public sealed partial class MetadataEditorViewModel : ObservableObject
             return true;
         }
 
-        switch (await _dialogs.AskToSaveChangesAsync(FileName))
+        switch (await _dialogs.AskToSaveChangesAsync(Title))
         {
             case UnsavedChangesChoice.Save:
                 return await SaveCoreAsync();
@@ -136,6 +149,21 @@ public sealed partial class MetadataEditorViewModel : ObservableObject
                 return true;
             default:
                 return false;
+        }
+    }
+
+    /// <summary>Files were written elsewhere (a tool, an undo): forget cached reads and reload if they're showing.</summary>
+    public void Receive(FilesChangedMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        foreach (var path in message.FilePaths)
+        {
+            _cache.Remove(path);
+        }
+
+        if (RequestedPaths.Count > 0 && message.FilePaths.Intersect(RequestedPaths, StringComparer.OrdinalIgnoreCase).Any())
+        {
+            _ = ShowSelectionAsync(RequestedPaths);
         }
     }
 
@@ -153,7 +181,7 @@ public sealed partial class MetadataEditorViewModel : ObservableObject
 
     private async Task<bool> SaveCoreAsync()
     {
-        if (_metadata is null)
+        if (_photos.Count == 0)
         {
             return true;
         }
@@ -165,99 +193,165 @@ public sealed partial class MetadataEditorViewModel : ObservableObject
             return false;
         }
 
-        var path = _metadata.FilePath;
-        var editSet = EditSet.Create($"Edit {FileName}", [new FileEdits(path, [.. dirty.Select(f => f.ToEdit())])]);
-        var preview = ChangePreview.Create(editSet, new Dictionary<string, ImageMetadata> { [path] = _metadata });
+        List<MetadataEdit> edits = [.. dirty.SelectMany(f => f.ToEdits())];
+        var description = _photos.Count == 1 ? $"Edit {Title}" : $"Edit {_photos.Count} photos";
+        var editSet = EditSet.Create(description, _photos.Select(p => new FileEdits(p.FilePath, edits)));
+        var current = LoadedMetadata;
 
-        // Only formatting differed (e.g. "a;b" vs "a; b"): nothing to write.
-        if (preview.IsEmpty)
+        // Only formatting differed (e.g. "a;b" vs "a; b"): nothing to write, so quietly tidy up.
+        if (ChangePreview.Create(editSet, current).IsEmpty)
         {
             dirty.ForEach(f => f.Revert());
             return true;
         }
 
-        if (!await _dialogs.ConfirmChangesAsync(preview))
-        {
-            return false;
-        }
+        // On success the runner announces the changed files, and Receive reloads them.
+        var result = await _runner.RunAsync(editSet, current);
+        return result is { FailedCount: 0 };
+    }
 
+    private async Task LoadAsync(IReadOnlyList<string> filePaths, int version)
+    {
         IsLoading = true;
         try
         {
-            var result = await _writer.ApplyAsync(editSet);
-            var file = result.Files.Single();
-            if (!file.Succeeded)
+            var results = await ReadAsync(filePaths);
+
+            // A newer selection arrived while this one was loading.
+            if (version != _loadVersion)
             {
-                await _dialogs.ShowErrorAsync($"Couldn't save {FileName}", file.Error ?? "ExifTool did not update the file.");
-                return false;
+                return;
+            }
+
+            var loaded = results.Where(r => r.Succeeded).Select(r => r.Metadata!).ToList();
+            var failed = results.Where(r => !r.Succeeded).ToList();
+            if (loaded.Count == 0)
+            {
+                Clear(failed.Count == 1
+                    ? $"Couldn't read {Path.GetFileName(failed[0].FilePath)}: {failed[0].Error}"
+                    : $"None of the {failed.Count} photos could be read.");
+                return;
+            }
+
+            Message = null;
+            Warning = failed.Count switch
+            {
+                0 => null,
+                1 => $"Couldn't read {Path.GetFileName(failed[0].FilePath)}, so it isn't included: {failed[0].Error}",
+                var count => $"{count} photos couldn't be read and aren't included.",
+            };
+            Show(loaded);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (version == _loadVersion)
+            {
+                Clear($"Couldn't read {(filePaths.Count == 1 ? Path.GetFileName(filePaths[0]) : "the photos")}: {ex.Message}");
             }
         }
         finally
         {
-            IsLoading = false;
+            if (version == _loadVersion)
+            {
+                IsLoading = false;
+            }
         }
-
-        // Re-read so the editor shows exactly what's in the file now (including MWG-synced copies).
-        await LoadAsync(path);
-        return true;
     }
 
-    private void Show(ImageMetadata metadata)
+    /// <summary>Reads files, reusing earlier reads of files that haven't changed on disk since.</summary>
+    private async Task<IReadOnlyList<MetadataReadResult>> ReadAsync(IReadOnlyList<string> filePaths)
     {
-        _metadata = metadata;
-        Message = null;
+        var stamps = filePaths.ToDictionary(p => p, File.GetLastWriteTimeUtc, StringComparer.OrdinalIgnoreCase);
+        var toRead = filePaths.Where(p => !_cache.TryGetValue(p, out var hit) || hit.Stamp != stamps[p]).ToList();
+
+        var fresh = toRead.Count == 0 ? [] : await _reader.ReadManyAsync(toRead);
+        foreach (var result in fresh.Where(r => r.Succeeded))
+        {
+            _cache[result.FilePath] = (stamps.GetValueOrDefault(result.FilePath), result.Metadata!);
+        }
+
+        var freshByPath = fresh.ToDictionary(r => r.FilePath, StringComparer.OrdinalIgnoreCase);
+        return [.. filePaths.Select(p => freshByPath.TryGetValue(p, out var result) ? result : new MetadataReadResult(p, _cache[p].Metadata, null))];
+    }
+
+    private void Show(IReadOnlyList<ImageMetadata> photos)
+    {
+        _photos = photos;
         _allFields.Clear();
-        _allFields.AddRange(BuildFields(metadata));
+        _allFields.AddRange(BuildFields(photos));
         _allFields.ForEach(f => f.ShowKey = ShowTagKeys);
         RefreshGroups();
         UpdateDirty();
-        OnPropertyChanged(nameof(FilePath));
-        OnPropertyChanged(nameof(FileName));
-        OnPropertyChanged(nameof(HasPhoto));
+        NotifySelectionChanged();
     }
 
     private void Clear(string message)
     {
-        ++_loadVersion;
         IsLoading = false;
-        _metadata = null;
+        _photos = [];
         _allFields.Clear();
         Groups.Clear();
+        Warning = null;
         Message = message;
         UpdateDirty();
-        OnPropertyChanged(nameof(FilePath));
-        OnPropertyChanged(nameof(FileName));
-        OnPropertyChanged(nameof(HasPhoto));
+        NotifySelectionChanged();
     }
 
-    private IEnumerable<TagFieldViewModel> BuildFields(ImageMetadata metadata)
+    private void NotifySelectionChanged()
     {
-        // The common fields always appear, so you can fill in a copyright the file doesn't have yet.
+        OnPropertyChanged(nameof(FilePath));
+        OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(HasPhoto));
+        OnPropertyChanged(nameof(IsMultiple));
+        OnPropertyChanged(nameof(PhotoCount));
+        OnPropertyChanged(nameof(LoadedMetadata));
+    }
+
+    private List<TagFieldViewModel> BuildFields(IReadOnlyList<ImageMetadata> photos)
+    {
+        var fields = new List<TagFieldViewModel>();
+
+        // The common fields always appear, so you can fill in a copyright the photos don't have yet.
         foreach (var common in TagCatalog.CommonFields)
         {
-            var value = metadata.TryGetTag(common.Key, out var tag) ? Display(tag) : string.Empty;
-            yield return new TagFieldViewModel(common.Key, common.DisplayName, TagCategory.Common, common.Editor, value, isReadOnly: false, UpdateDirty);
+            var (value, mixed) = Merge(photos, common.Key, common.Editor == EditorKind.List);
+            fields.Add(new TagFieldViewModel(common.Key, common.DisplayName, TagCategory.Common, common.Editor, value, isReadOnly: false, UpdateDirty, mixed));
         }
 
-        foreach (var tag in metadata.Tags)
+        var keys = photos.SelectMany(p => p.Tags).Select(t => t.Key).Distinct().Where(k => TagCatalog.FindCommonField(k) is null);
+        foreach (var key in keys)
         {
-            if (TagCatalog.FindCommonField(tag.Key) is not null)
-            {
-                continue;
-            }
-
-            yield return new TagFieldViewModel(
-                tag.Key,
-                tag.Description,
-                TagCatalog.CategoryOf(tag.Key),
-                TagCatalog.EditorFor(tag.Key, tag.IsList),
-                Display(tag),
-                isReadOnly: !tag.IsWritable,
-                UpdateDirty);
+            var tags = photos.Select(p => p.TryGetTag(key, out var tag) ? tag : null).ToList();
+            var first = tags.First(t => t is not null)!;
+            var isList = tags.Any(t => t?.IsList == true);
+            var (value, mixed) = Merge(photos, key, isList);
+            fields.Add(new TagFieldViewModel(
+                key,
+                first.Description,
+                TagCatalog.CategoryOf(key),
+                TagCatalog.EditorFor(key, isList),
+                value,
+                isReadOnly: tags.Any(t => t is { IsWritable: false }),
+                UpdateDirty,
+                mixed));
         }
+
+        return fields;
     }
 
-    private static string Display(MetadataTag tag) => TagCatalog.JoinList(tag.Values);
+    /// <summary>The shared value, or for differing values: empty (text) or the items every photo has (lists).</summary>
+    private static (string Value, bool Mixed) Merge(IReadOnlyList<ImageMetadata> photos, TagKey key, bool isList)
+    {
+        var values = photos.Select(p => p.TryGetTag(key, out var tag) ? tag.Values : (IReadOnlyList<string>)[]).ToList();
+        if (values.All(v => v.SequenceEqual(values[0])))
+        {
+            return (TagCatalog.JoinList(values[0]), false);
+        }
+
+        return isList
+            ? (TagCatalog.JoinList(values.Skip(1).Aggregate((IEnumerable<string>)values[0], (shared, v) => shared.Intersect(v))), true)
+            : (string.Empty, true);
+    }
 
     private void RefreshGroups()
     {
@@ -265,9 +359,7 @@ public sealed partial class MetadataEditorViewModel : ObservableObject
         var visible = filter.Length == 0 ? _allFields : _allFields.Where(f => f.Matches(filter));
 
         Groups.Clear();
-        foreach (var group in visible
-            .GroupBy(f => f.Category)
-            .OrderBy(g => g.Key))
+        foreach (var group in visible.GroupBy(f => f.Category).OrderBy(g => g.Key))
         {
             // Common fields keep the catalog's order; other sections are alphabetical.
             var fields = group.Key == TagCategory.Common

@@ -8,11 +8,11 @@ namespace PictureIt.Presentation.Tests;
 public sealed class LibraryViewModelTests : IDisposable
 {
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "PictureIt.Tests", Guid.NewGuid().ToString("N"));
-    private readonly IMetadataReader _reader = Substitute.For<IMetadataReader>();
-    private readonly IDialogService _dialogs = Substitute.For<IDialogService>();
-    private readonly IFolderPicker _picker = Substitute.For<IFolderPicker>();
+    private readonly Harness _h = new();
+    private readonly IDialogService _dialogs;
+    private readonly IFolderPicker _picker;
     private readonly IPhotoSummaryReader _summaries = Substitute.For<IPhotoSummaryReader>();
-    private readonly InMemorySettingsStore _settings = new();
+    private readonly InMemorySettingsStore _settings;
     private readonly LibraryViewModel _library;
 
     public LibraryViewModelTests()
@@ -20,12 +20,15 @@ public sealed class LibraryViewModelTests : IDisposable
         Directory.CreateDirectory(_folder);
         foreach (var name in new[] { "b.JPG", "a.jpg", "c.cr3", "notes.txt", "d.png" })
         {
-            File.WriteAllText(Path.Combine(_folder, name), string.Empty);
+            var path = Path.Combine(_folder, name);
+            File.WriteAllText(path, string.Empty);
+            _h.Reader.Add(Metadata.Sample(path));
         }
 
-        _reader.ReadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(call => Metadata.Sample(call.Arg<string>()));
-        var editor = new MetadataEditorViewModel(_reader, Substitute.For<IMetadataWriter>(), _dialogs, _settings);
-        _library = new LibraryViewModel(_picker, _settings, _summaries, editor);
+        _dialogs = _h.Dialogs;
+        _picker = _h.FolderPicker;
+        _settings = _h.Settings;
+        _library = new LibraryViewModel(_picker, _settings, _summaries, _h.Editor, _h.Tools);
     }
 
     [Fact]
@@ -100,7 +103,8 @@ public sealed class LibraryViewModelTests : IDisposable
         await _library.SelectAsync([_library.Photos[0], _library.Photos[1]]);
 
         _library.StatusText.ShouldBe("2 of 4 photos selected");
-        _library.Editor.HasPhoto.ShouldBeFalse();
+        _library.Editor.PhotoCount.ShouldBe(2);
+        _library.Editor.Title.ShouldBe("2 photos");
     }
 
     [Fact]

@@ -14,6 +14,18 @@ public sealed partial class SettingsPage : Page
         ViewModel = App.Services.GetRequiredService<SettingsViewModel>();
         InitializeComponent();
         ThemeBox.SelectedIndex = (int)ViewModel.Theme;
+        RetentionBox.SelectedItem = RetentionBox.Items.OfType<ComboBoxItem>()
+            .FirstOrDefault(i => (string)i.Tag == ViewModel.BackupRetentionDays.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            ?? RetentionBox.Items[1];
+    }
+
+    private void OnRetentionSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (RetentionBox.SelectedItem is ComboBoxItem { Tag: string tag }
+            && int.TryParse(tag, System.Globalization.CultureInfo.InvariantCulture, out var days))
+        {
+            ViewModel.BackupRetentionDays = days;
+        }
     }
 
     public SettingsViewModel ViewModel { get; }

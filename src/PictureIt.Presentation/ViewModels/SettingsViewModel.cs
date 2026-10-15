@@ -15,6 +15,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _themes = themes;
         BackupFolder = backupFolder;
         Theme = settings.Load().Theme;
+        BackupRetentionDays = settings.Load().BackupRetentionDays;
         _initialized = true;
     }
 
@@ -27,6 +28,20 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial AppTheme Theme { get; set; }
+
+    /// <summary>Choices for how long backups are kept; 0 means forever.</summary>
+    public IReadOnlyList<int> RetentionChoices { get; } = [7, 30, 90, 365, 0];
+
+    [ObservableProperty]
+    public partial int BackupRetentionDays { get; set; }
+
+    partial void OnBackupRetentionDaysChanged(int value)
+    {
+        if (_initialized)
+        {
+            _settings.Save(_settings.Load() with { BackupRetentionDays = value });
+        }
+    }
 
     partial void OnThemeChanged(AppTheme value)
     {

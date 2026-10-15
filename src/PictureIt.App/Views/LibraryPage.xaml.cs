@@ -21,6 +21,13 @@ public sealed partial class LibraryPage : Page
         ViewModel = App.Services.GetRequiredService<LibraryViewModel>();
         InitializeComponent();
         ViewModel.SelectionRequested += OnSelectionRequested;
+        ViewModel.Tools.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ToolsViewModel.CopiedFrom))
+            {
+                PasteButton.Label = $"Paste from {ViewModel.Tools.CopiedFrom}";
+            }
+        };
         PhotoGrid.Loaded += (_, _) =>
         {
             if ((_deferredSelection ?? ViewModel.TakePendingSelection()) is { } pending)
@@ -77,6 +84,7 @@ public sealed partial class LibraryPage : Page
         var version = ++_previewVersion;
         PreviewImage.Source = null;
         PreviewScroller.ChangeView(0, 0, 1, disableAnimation: true);
+        PreviewHint.Text = path is null && _selection.Count > 1 ? $"{_selection.Count} photos selected" : string.Empty;
         if (path is null)
         {
             PreviewProgress.IsActive = false;
@@ -134,6 +142,41 @@ public sealed partial class LibraryPage : Page
         {
             thumb.Source = image;
         }
+    }
+
+    /// <summary>Saved templates to apply, then "save as" and "manage".</summary>
+    private void OnTemplatesMenuOpening(object sender, object e)
+    {
+        var tools = ViewModel.Tools;
+        tools.RefreshTemplates();
+        TemplatesMenu.Items.Clear();
+
+        if (tools.Templates.Count == 0)
+        {
+            TemplatesMenu.Items.Add(new MenuFlyoutItem { Text = "No templates yet", IsEnabled = false });
+        }
+
+        foreach (var template in tools.Templates)
+        {
+            TemplatesMenu.Items.Add(new MenuFlyoutItem
+            {
+                Text = $"Apply \"{template.Name}\"",
+                Command = tools.ApplyTemplateCommand,
+                CommandParameter = template,
+                Icon = new FontIcon { Glyph = "" },
+            });
+        }
+
+        TemplatesMenu.Items.Add(new MenuFlyoutSeparator());
+        TemplatesMenu.Items.Add(new MenuFlyoutItem
+        {
+            Text = "Save this photo as a template…",
+            Command = tools.SaveAsTemplateCommand,
+            Icon = new FontIcon { Glyph = "" },
+        });
+        var manage = new MenuFlyoutItem { Text = "Manage templates", Icon = new FontIcon { Glyph = "" } };
+        manage.Click += (_, _) => App.MainWindow?.Navigate(MainWindow.TemplatesTag);
+        TemplatesMenu.Items.Add(manage);
     }
 
     private void OnRecentMenuOpening(object sender, object e)

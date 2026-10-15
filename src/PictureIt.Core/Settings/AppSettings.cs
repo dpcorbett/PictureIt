@@ -20,6 +20,9 @@ public sealed record AppSettings
     /// <summary>Show "IFD0:Model" style keys next to friendly names in the editor.</summary>
     public bool ShowTagKeys { get; init; }
 
+    /// <summary>Backups older than this are deleted at startup; their batches can then no longer be undone. 0 keeps them forever.</summary>
+    public int BackupRetentionDays { get; init; } = 30;
+
     /// <summary>Returns settings with <paramref name="folder"/> moved to the top of the recent list.</summary>
     public AppSettings WithRecentFolder(string folder)
     {

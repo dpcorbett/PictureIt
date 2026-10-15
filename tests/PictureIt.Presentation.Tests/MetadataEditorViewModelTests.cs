@@ -1,4 +1,4 @@
-using PictureIt.Core.Abstractions;
+using CommunityToolkit.Mvvm.Messaging;
 using PictureIt.Core.Catalog;
 using PictureIt.Core.Model;
 using PictureIt.Presentation.Services;
@@ -8,27 +8,29 @@ namespace PictureIt.Presentation.Tests;
 
 public sealed class MetadataEditorViewModelTests
 {
-    private readonly IMetadataReader _reader = Substitute.For<IMetadataReader>();
-    private readonly IMetadataWriter _writer = Substitute.For<IMetadataWriter>();
-    private readonly IDialogService _dialogs = Substitute.For<IDialogService>();
-    private readonly InMemorySettingsStore _settings = new();
-    private readonly MetadataEditorViewModel _editor;
+    private const string B = @"C:\photos\b.jpg";
+
+    private readonly Harness _h = new();
 
     public MetadataEditorViewModelTests()
     {
-        _reader.ReadAsync(Metadata.Path, Arg.Any<CancellationToken>()).Returns(Metadata.Sample());
-        _dialogs.ConfirmChangesAsync(Arg.Any<ChangePreview>()).Returns(true);
-        _writer.ApplyAsync(Arg.Any<EditSet>(), Arg.Any<IProgress<WriteProgress>?>(), Arg.Any<CancellationToken>())
-            .Returns(call => Succeeded(call.Arg<EditSet>()));
-        _editor = new MetadataEditorViewModel(_reader, _writer, _dialogs, _settings);
+        _h.Reader.Add(Metadata.Sample());
+        _h.Reader.Add(Metadata.Create(
+            B,
+            ("IFD0:Model", "Canon EOS R5"),
+            ("MWG:Keywords", "London; Thames"),
+            ("MWG:Description", "Another description"),
+            ("File:FileType", "JPEG")));
     }
+
+    private MetadataEditorViewModel Editor => _h.Editor;
 
     [Fact]
     public async Task Shows_common_fields_first_even_when_the_file_lacks_them()
     {
-        await _editor.LoadAsync(Metadata.Path);
+        await Editor.LoadAsync(Metadata.Path);
 
-        var common = _editor.Groups[0];
+        var common = Editor.Groups[0];
         common.Category.ShouldBe(TagCategory.Common);
         common.Fields.Select(f => f.Key).ShouldBe(TagCatalog.CommonFields.Select(f => f.Key));
         Field("MWG:Keywords").Value.ShouldBe("London; Big Ben");
@@ -38,16 +40,16 @@ public sealed class MetadataEditorViewModelTests
     [Fact]
     public async Task Groups_other_tags_by_category_in_display_order()
     {
-        await _editor.LoadAsync(Metadata.Path);
+        await Editor.LoadAsync(Metadata.Path);
 
-        _editor.Groups.Select(g => g.Category).ShouldBe(
-            [TagCategory.Common, TagCategory.Location, TagCategory.Camera, TagCategory.Exposure, TagCategory.File]);
+        Editor.Groups.Select(g => g.Category).ShouldBe(
+            [TagCategory.Common, TagCategory.Date, TagCategory.Location, TagCategory.Camera, TagCategory.Exposure, TagCategory.File]);
     }
 
     [Fact]
     public async Task Marks_computed_and_file_tags_read_only()
     {
-        await _editor.LoadAsync(Metadata.Path);
+        await Editor.LoadAsync(Metadata.Path);
 
         Field("File:FileType").IsReadOnly.ShouldBeTrue();
         Field("Composite:GPSPosition").IsReadOnly.ShouldBeTrue();
@@ -57,88 +59,89 @@ public sealed class MetadataEditorViewModelTests
     [Fact]
     public async Task Tracks_edits_and_reverts_them()
     {
-        await _editor.LoadAsync(Metadata.Path);
+        await Editor.LoadAsync(Metadata.Path);
 
         Field("IFD0:Model").Value = "Canon EOS R6";
-        _editor.IsDirty.ShouldBeTrue();
-        _editor.SaveCommand.CanExecute(null).ShouldBeTrue();
+        Editor.IsDirty.ShouldBeTrue();
+        Editor.SaveCommand.CanExecute(null).ShouldBeTrue();
 
-        _editor.RevertCommand.Execute(null);
+        Editor.RevertCommand.Execute(null);
 
-        _editor.IsDirty.ShouldBeFalse();
+        Editor.IsDirty.ShouldBeFalse();
         Field("IFD0:Model").Value.ShouldBe("Canon EOS R5");
     }
 
     [Fact]
-    public async Task Saves_through_preview_then_writer_then_reloads()
+    public async Task Saves_through_the_batch_runner_then_reloads()
     {
-        await _editor.LoadAsync(Metadata.Path);
+        await Editor.LoadAsync(Metadata.Path);
         Field("MWG:Keywords").Value = "London;Thames";
         Field("MWG:Description").Value = string.Empty;
         Field("MWG:Copyright").Value = "  (c) Dave  ";
 
-        await _editor.SaveCommand.ExecuteAsync(null);
+        await Editor.SaveCommand.ExecuteAsync(null);
 
-        await _dialogs.Received(1).ConfirmChangesAsync(Arg.Is<ChangePreview>(p => p.ChangeCount == 3));
-        var editSet = (EditSet)_writer.ReceivedCalls().Single().GetArguments()[0]!;
-        var edits = editSet.Files.ShouldHaveSingleItem().Edits;
-        edits.ShouldContain(e => e.Key == TagKey.Parse("MWG:Keywords") && e.Kind == EditKind.Set && e.Values.SequenceEqual(new[] { "London", "Thames" }));
-        edits.ShouldContain(e => e.Key == TagKey.Parse("MWG:Description") && e.Kind == EditKind.Remove);
-        edits.ShouldContain(e => e.Key == TagKey.Parse("MWG:Copyright") && e.Values.SequenceEqual(new[] { "(c) Dave" }));
-        await _reader.Received(2).ReadAsync(Metadata.Path, Arg.Any<CancellationToken>());
+        await _h.Dialogs.Received(1).ConfirmChangesAsync(Arg.Is<ChangePreview>(p => p.ChangeCount == 3));
+        var edits = _h.Written.ShouldHaveSingleItem().Files.ShouldHaveSingleItem().Edits;
+        edits.ShouldContain(MetadataEdit.Set(TagKey.Parse("MWG:Keywords"), ["London", "Thames"]));
+        edits.ShouldContain(MetadataEdit.Remove(TagKey.Parse("MWG:Description")));
+        edits.ShouldContain(MetadataEdit.Set(TagKey.Parse("MWG:Copyright"), "(c) Dave"));
+        _h.History.Records.ShouldHaveSingleItem().Description.ShouldBe("Edit a.jpg");
+        _h.Reader.ReadPaths.Count.ShouldBe(2);
+        Editor.IsDirty.ShouldBeFalse();
     }
 
     [Fact]
     public async Task Does_not_write_when_the_preview_is_declined()
     {
-        _dialogs.ConfirmChangesAsync(Arg.Any<ChangePreview>()).Returns(false);
-        await _editor.LoadAsync(Metadata.Path);
+        _h.Dialogs.ConfirmChangesAsync(Arg.Any<ChangePreview>()).Returns(false);
+        await Editor.LoadAsync(Metadata.Path);
         Field("IFD0:Model").Value = "Changed";
 
-        await _editor.SaveCommand.ExecuteAsync(null);
+        await Editor.SaveCommand.ExecuteAsync(null);
 
-        _writer.ReceivedCalls().ShouldBeEmpty();
-        _editor.IsDirty.ShouldBeTrue();
+        _h.Written.ShouldBeEmpty();
+        Editor.IsDirty.ShouldBeTrue();
     }
 
     [Fact]
     public async Task Blocks_saving_an_invalid_value()
     {
-        await _editor.LoadAsync(Metadata.Path);
+        await Editor.LoadAsync(Metadata.Path);
         Field("MWG:DateTimeOriginal").Value = "15/06/2024";
 
         Field("MWG:DateTimeOriginal").HasError.ShouldBeTrue();
-        await _editor.SaveCommand.ExecuteAsync(null);
+        await Editor.SaveCommand.ExecuteAsync(null);
 
-        await _dialogs.Received(1).ShowErrorAsync(Arg.Any<string>(), Arg.Is<string>(m => m.Contains("Date taken")));
-        _writer.ReceivedCalls().ShouldBeEmpty();
+        await _h.Dialogs.Received(1).ShowErrorAsync(Arg.Any<string>(), Arg.Is<string>(m => m.Contains("Date taken")));
+        _h.Written.ShouldBeEmpty();
     }
 
     [Fact]
     public async Task Treats_a_formatting_only_change_as_no_change()
     {
-        await _editor.LoadAsync(Metadata.Path);
+        await Editor.LoadAsync(Metadata.Path);
         Field("MWG:Keywords").Value = "London;Big Ben";
 
-        await _editor.SaveCommand.ExecuteAsync(null);
+        await Editor.SaveCommand.ExecuteAsync(null);
 
-        await _dialogs.DidNotReceive().ConfirmChangesAsync(Arg.Any<ChangePreview>());
-        _writer.ReceivedCalls().ShouldBeEmpty();
-        _editor.IsDirty.ShouldBeFalse();
+        await _h.Dialogs.DidNotReceive().ConfirmChangesAsync(Arg.Any<ChangePreview>());
+        _h.Written.ShouldBeEmpty();
+        Editor.IsDirty.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task Reports_a_failed_write_and_keeps_the_edits()
+    public async Task Keeps_the_edits_when_the_write_fails()
     {
-        _writer.ApplyAsync(Arg.Any<EditSet>(), Arg.Any<IProgress<WriteProgress>?>(), Arg.Any<CancellationToken>())
+        _h.Writer.ApplyAsync(Arg.Any<EditSet>(), Arg.Any<IProgress<WriteProgress>?>(), Arg.Any<CancellationToken>())
             .Returns(call => new WriteResult(call.Arg<EditSet>().BatchId, [new FileWriteResult(Metadata.Path, false, "Disk full", [])], true));
-        await _editor.LoadAsync(Metadata.Path);
+        await Editor.LoadAsync(Metadata.Path);
         Field("IFD0:Model").Value = "Changed";
 
-        await _editor.SaveCommand.ExecuteAsync(null);
+        await Editor.SaveCommand.ExecuteAsync(null);
 
-        await _dialogs.Received(1).ShowErrorAsync(Arg.Any<string>(), "Disk full");
-        _editor.IsDirty.ShouldBeTrue();
+        await _h.Dialogs.Received(1).ShowWriteFailuresAsync(Arg.Is<WriteResult>(r => r.FailedCount == 1));
+        Editor.IsDirty.ShouldBeTrue();
     }
 
     [Theory]
@@ -147,102 +150,159 @@ public sealed class MetadataEditorViewModelTests
     [InlineData(UnsavedChangesChoice.Save, true, false)]
     public async Task Asks_about_unsaved_changes_before_leaving(UnsavedChangesChoice choice, bool canLeave, bool stillDirty)
     {
-        _dialogs.AskToSaveChangesAsync("a.jpg").Returns(choice);
-        await _editor.LoadAsync(Metadata.Path);
+        _h.Dialogs.AskToSaveChangesAsync("a.jpg").Returns(choice);
+        await Editor.LoadAsync(Metadata.Path);
         Field("IFD0:Model").Value = "Changed";
 
-        (await _editor.ConfirmLeaveAsync()).ShouldBe(canLeave);
+        (await Editor.ConfirmLeaveAsync()).ShouldBe(canLeave);
 
-        _editor.IsDirty.ShouldBe(stillDirty);
-        _writer.ReceivedCalls().Count().ShouldBe(choice == UnsavedChangesChoice.Save ? 1 : 0);
+        Editor.IsDirty.ShouldBe(stillDirty);
+        _h.Written.Count.ShouldBe(choice == UnsavedChangesChoice.Save ? 1 : 0);
     }
 
     [Fact]
     public async Task Leaving_without_changes_does_not_ask()
     {
-        await _editor.LoadAsync(Metadata.Path);
+        await Editor.LoadAsync(Metadata.Path);
 
-        (await _editor.ConfirmLeaveAsync()).ShouldBeTrue();
+        (await Editor.ConfirmLeaveAsync()).ShouldBeTrue();
 
-        await _dialogs.DidNotReceive().AskToSaveChangesAsync(Arg.Any<string>());
-    }
-
-    [Fact]
-    public async Task Explains_why_several_photos_cannot_be_edited_here()
-    {
-        await _editor.ShowSelectionAsync([@"C:\a.jpg", @"C:\b.jpg"]);
-
-        _editor.HasPhoto.ShouldBeFalse();
-        _editor.Message.ShouldNotBeNull().ShouldContain("2 photos selected");
-        _editor.Groups.ShouldBeEmpty();
+        await _h.Dialogs.DidNotReceive().AskToSaveChangesAsync(Arg.Any<string>());
     }
 
     [Fact]
     public async Task Ignores_a_slow_load_that_a_newer_selection_overtook()
     {
-        var slow = new TaskCompletionSource<ImageMetadata>();
-        _reader.ReadAsync(@"C:\slow.jpg", Arg.Any<CancellationToken>()).Returns(slow.Task);
-        _reader.ReadAsync(@"C:\fast.jpg", Arg.Any<CancellationToken>()).Returns(Metadata.Sample(@"C:\fast.jpg"));
+        _h.Reader.Gates[Metadata.Path] = new TaskCompletionSource();
 
-        var first = _editor.LoadAsync(@"C:\slow.jpg");
-        await _editor.LoadAsync(@"C:\fast.jpg");
-        slow.SetResult(Metadata.Sample(@"C:\slow.jpg"));
+        var first = Editor.LoadAsync(Metadata.Path);
+        await Editor.LoadAsync(B);
+        _h.Reader.Gates[Metadata.Path].SetResult();
         await first;
 
-        _editor.FilePath.ShouldBe(@"C:\fast.jpg");
-        _editor.IsLoading.ShouldBeFalse();
+        Editor.FilePath.ShouldBe(B);
+        Editor.IsLoading.ShouldBeFalse();
     }
 
     [Fact]
     public async Task Shows_a_read_error_as_a_message()
     {
-        _reader.ReadAsync(@"C:\bad.jpg", Arg.Any<CancellationToken>()).Returns<ImageMetadata>(_ => throw new IOException("File is empty"));
+        _h.Reader.Errors[@"C:\bad.jpg"] = "File is empty";
 
-        await _editor.LoadAsync(@"C:\bad.jpg");
+        await Editor.LoadAsync(@"C:\bad.jpg");
 
-        _editor.HasPhoto.ShouldBeFalse();
-        _editor.Message.ShouldBe("Couldn't read bad.jpg: File is empty");
+        Editor.HasPhoto.ShouldBeFalse();
+        Editor.Message.ShouldBe("Couldn't read bad.jpg: File is empty");
     }
 
     [Fact]
-    public async Task Filters_fields_by_name_key_or_value()
+    public async Task Filters_fields_by_name_key_or_value_and_keeps_edits()
     {
-        await _editor.LoadAsync(Metadata.Path);
-
-        _editor.FilterText = "canon";
-
-        _editor.Groups.SelectMany(g => g.Fields).Select(f => f.KeyText).ShouldBe(["IFD0:Model"]);
-
-        _editor.FilterText = string.Empty;
-        _editor.Groups.SelectMany(g => g.Fields).Count().ShouldBeGreaterThan(1);
-    }
-
-    [Fact]
-    public async Task Filtering_keeps_unsaved_edits()
-    {
-        await _editor.LoadAsync(Metadata.Path);
+        await Editor.LoadAsync(Metadata.Path);
         Field("IFD0:Model").Value = "Changed";
 
-        _editor.FilterText = "exposure";
-        _editor.FilterText = string.Empty;
+        Editor.FilterText = "changed";
+        Editor.Groups.SelectMany(g => g.Fields).Select(f => f.KeyText).ShouldBe(["IFD0:Model"]);
 
+        Editor.FilterText = string.Empty;
         Field("IFD0:Model").Value.ShouldBe("Changed");
-        _editor.IsDirty.ShouldBeTrue();
+        Editor.IsDirty.ShouldBeTrue();
     }
 
     [Fact]
     public void Remembers_the_show_tag_keys_choice()
     {
-        _settings.SaveCount.ShouldBe(0);
+        _h.Settings.SaveCount.ShouldBe(0);
 
-        _editor.ShowTagKeys = true;
+        Editor.ShowTagKeys = true;
 
-        _settings.Current.ShowTagKeys.ShouldBeTrue();
+        _h.Settings.Current.ShowTagKeys.ShouldBeTrue();
+    }
+
+    // Several photos
+
+    [Fact]
+    public async Task Merges_several_photos_showing_shared_values_and_marking_differences()
+    {
+        await Editor.ShowSelectionAsync([Metadata.Path, B]);
+
+        Editor.Title.ShouldBe("2 photos");
+        Editor.IsMultiple.ShouldBeTrue();
+        Field("IFD0:Model").Value.ShouldBe("Canon EOS R5");
+        Field("IFD0:Model").IsMixed.ShouldBeFalse();
+        Field("MWG:Description").IsMixed.ShouldBeTrue();
+        Field("MWG:Description").Value.ShouldBeEmpty();
+        Field("MWG:Keywords").IsMixed.ShouldBeTrue();
+        Field("MWG:Keywords").Value.ShouldBe("London");
+        Field("ExifIFD:DateTimeOriginal").IsMixed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Editing_a_mixed_field_sets_it_on_every_photo()
+    {
+        await Editor.ShowSelectionAsync([Metadata.Path, B]);
+        Field("MWG:Description").Value = "Same for both";
+
+        await Editor.SaveCommand.ExecuteAsync(null);
+
+        var files = _h.Written.ShouldHaveSingleItem().Files;
+        files.Select(f => f.FilePath).ShouldBe([Metadata.Path, B]);
+        files.ShouldAllBe(f => f.Edits.Single() == MetadataEdit.Set(TagKey.Parse("MWG:Description"), "Same for both"));
+        _h.History.Records.ShouldHaveSingleItem().Description.ShouldBe("Edit 2 photos");
+    }
+
+    [Fact]
+    public async Task Editing_shared_keywords_adds_and_removes_without_touching_each_photos_others()
+    {
+        await Editor.ShowSelectionAsync([Metadata.Path, B]);
+        Field("MWG:Keywords").Value = "England; UK";
+
+        await Editor.SaveCommand.ExecuteAsync(null);
+
+        var keywords = TagKey.Parse("MWG:Keywords");
+        _h.Written.ShouldHaveSingleItem().Files[0].Edits.ShouldBe(
+            [MetadataEdit.AddToList(keywords, "England", "UK"), MetadataEdit.RemoveFromList(keywords, "London")]);
+    }
+
+    [Fact]
+    public async Task A_mixed_field_left_empty_changes_nothing_and_clear_all_removes_it()
+    {
+        await Editor.ShowSelectionAsync([Metadata.Path, B]);
+        var description = Field("MWG:Description");
+        description.IsDirty.ShouldBeFalse();
+
+        description.ClearAllCommand.Execute(null);
+        description.Placeholder.ShouldContain("removed");
+        await Editor.SaveCommand.ExecuteAsync(null);
+
+        _h.Written.ShouldHaveSingleItem().Files.ShouldAllBe(f => f.Edits.Single() == MetadataEdit.Remove(TagKey.Parse("MWG:Description")));
+    }
+
+    [Fact]
+    public async Task Leaves_out_photos_that_cannot_be_read_and_says_so()
+    {
+        _h.Reader.Errors[B] = "File is empty";
+
+        await Editor.ShowSelectionAsync([Metadata.Path, B]);
+
+        Editor.PhotoCount.ShouldBe(1);
+        Editor.Message.ShouldBeNull();
+        Editor.Warning.ShouldBe("Couldn't read b.jpg, so it isn't included: File is empty");
+    }
+
+    [Fact]
+    public async Task Reuses_earlier_reads_and_rereads_files_that_changed()
+    {
+        await Editor.ShowSelectionAsync([Metadata.Path]);
+        await Editor.ShowSelectionAsync([Metadata.Path, B]);
+        _h.Reader.ReadPaths.ShouldBe([Metadata.Path, B]);
+
+        _h.Messenger.Send(new FilesChangedMessage([B]));
+        await Task.Yield();
+
+        _h.Reader.ReadPaths.ShouldBe([Metadata.Path, B, B]);
     }
 
     private TagFieldViewModel Field(string key) =>
-        _editor.Groups.SelectMany(g => g.Fields).Single(f => f.Key == TagKey.Parse(key));
-
-    private static WriteResult Succeeded(EditSet editSet) =>
-        new(editSet.BatchId, [.. editSet.Files.Select(f => new FileWriteResult(f.FilePath, true, null, []))], true);
+        Editor.Groups.SelectMany(g => g.Fields).Single(f => f.Key == TagKey.Parse(key));
 }

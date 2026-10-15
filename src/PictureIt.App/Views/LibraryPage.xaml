@@ -21,6 +21,8 @@
                    VerticalAlignment="Bottom" Visibility="{x:Bind ShowKey, Mode=OneWay}" IsTextSelectionEnabled="True" />
         <Ellipse Width="6" Height="6" Fill="{ThemeResource AccentFillColorDefaultBrush}" VerticalAlignment="Center"
                  Visibility="{x:Bind IsDirty, Mode=OneWay}" ToolTipService.ToolTip="Edited" />
+        <HyperlinkButton Content="Clear on all" Padding="4,0" FontSize="12" Command="{x:Bind ClearAllCommand}"
+                         Visibility="{x:Bind CanClearAll}" ToolTipService.ToolTip="Remove this field from every selected photo" />
       </StackPanel>
     </DataTemplate>
 
@@ -39,7 +41,7 @@
         <DataTemplate x:DataType="vm:TagFieldViewModel">
           <StackPanel Padding="0,6" Spacing="4">
             <ContentPresenter Content="{x:Bind}" ContentTemplate="{StaticResource FieldLabel}" />
-            <TextBox Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{x:Bind Placeholder}"
+            <TextBox Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{x:Bind Placeholder, Mode=OneWay}"
                      AutomationProperties.Name="{x:Bind DisplayName}" />
             <TextBlock Text="{x:Bind Error, Mode=OneWay}" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap"
                        FontSize="12" Visibility="{x:Bind HasError, Mode=OneWay}" />
@@ -52,7 +54,7 @@
           <StackPanel Padding="0,6" Spacing="4">
             <ContentPresenter Content="{x:Bind}" ContentTemplate="{StaticResource FieldLabel}" />
             <TextBox Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True"
-                     AutomationProperties.Name="{x:Bind DisplayName}"
+                     AutomationProperties.Name="{x:Bind DisplayName}" PlaceholderText="{x:Bind Placeholder, Mode=OneWay}"
                      TextWrapping="Wrap" MinHeight="72" MaxHeight="200" ScrollViewer.VerticalScrollBarVisibility="Auto" />
           </StackPanel>
         </DataTemplate>
@@ -87,7 +89,47 @@
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="Auto" />
         <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
       </Grid.ColumnDefinitions>
+
+      <!-- Bulk tools: work on every photo selected in the grid -->
+      <CommandBar Grid.Column="2" DefaultLabelPosition="Right" Background="Transparent" IsDynamicOverflowEnabled="True" VerticalAlignment="Center">
+        <AppBarButton Label="Templates" AutomationProperties.Name="Templates">
+          <AppBarButton.Icon>
+            <FontIcon Glyph="&#xE8A5;" />
+          </AppBarButton.Icon>
+          <AppBarButton.Flyout>
+            <MenuFlyout x:Name="TemplatesMenu" Opening="OnTemplatesMenuOpening" />
+          </AppBarButton.Flyout>
+        </AppBarButton>
+        <AppBarButton Label="Copy" Command="{x:Bind ViewModel.Tools.CopyMetadataCommand}" ToolTipService.ToolTip="Copy this photo's metadata">
+          <AppBarButton.Icon>
+            <FontIcon Glyph="&#xE8C8;" />
+          </AppBarButton.Icon>
+        </AppBarButton>
+        <AppBarButton x:Name="PasteButton" Label="Paste" Command="{x:Bind ViewModel.Tools.PasteMetadataCommand}"
+                      ToolTipService.ToolTip="Paste copied metadata onto the selected photos">
+          <AppBarButton.Icon>
+            <FontIcon Glyph="&#xE77F;" />
+          </AppBarButton.Icon>
+        </AppBarButton>
+        <AppBarSeparator />
+        <AppBarButton Label="Find and replace" Command="{x:Bind ViewModel.Tools.FindReplaceCommand}">
+          <AppBarButton.Icon>
+            <FontIcon Glyph="&#xE8EE;" />
+          </AppBarButton.Icon>
+        </AppBarButton>
+        <AppBarButton Label="Shift dates" Command="{x:Bind ViewModel.Tools.ShiftDatesCommand}">
+          <AppBarButton.Icon>
+            <FontIcon Glyph="&#xE787;" />
+          </AppBarButton.Icon>
+        </AppBarButton>
+        <AppBarButton Label="Remove metadata" Command="{x:Bind ViewModel.Tools.RemoveMetadataCommand}">
+          <AppBarButton.Icon>
+            <FontIcon Glyph="&#xE72E;" />
+          </AppBarButton.Icon>
+        </AppBarButton>
+      </CommandBar>
       <StackPanel Orientation="Horizontal" Spacing="4">
         <SplitButton Command="{x:Bind ViewModel.OpenFolderCommand}" ToolTipService.ToolTip="Open a folder (Ctrl+O)">
           <SplitButton.KeyboardAccelerators>
@@ -158,6 +200,9 @@
         </Grid>
       </ScrollViewer>
       <ProgressRing x:Name="PreviewProgress" IsActive="False" Width="32" Height="32" />
+      <TextBlock x:Name="PreviewHint" HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource SubtitleTextBlockStyle}"
+                 Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+
     </Grid>
 
     <!-- Metadata editor -->
@@ -166,8 +211,14 @@
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto" />
         <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
         <RowDefinition Height="*" />
       </Grid.RowDefinitions>
+
+      <!-- Some selected photos couldn't be read -->
+      <InfoBar Grid.Row="2" Severity="Warning" IsClosable="False" Margin="0,0,8,0"
+               IsOpen="{x:Bind ViewModel.Editor.HasWarning, Mode=OneWay}"
+               Message="{x:Bind ViewModel.Editor.Warning, Mode=OneWay}" />
 
       <Grid ColumnSpacing="8" Padding="0,0,8,0">
         <Grid.ColumnDefinitions>
@@ -175,7 +226,7 @@
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
-        <TextBlock Text="{x:Bind ViewModel.Editor.FileName, Mode=OneWay}" Style="{StaticResource SubtitleTextBlockStyle}"
+        <TextBlock Text="{x:Bind ViewModel.Editor.Title, Mode=OneWay}" Style="{StaticResource SubtitleTextBlockStyle}"
                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
         <Button Grid.Column="1" Command="{x:Bind ViewModel.Editor.RevertCommand}" ToolTipService.ToolTip="Discard changes"
                 AutomationProperties.Name="Discard changes">
@@ -207,7 +258,7 @@
       </Grid>
 
       <ListView
-          Grid.Row="2"
+          Grid.Row="3"
           ItemsSource="{x:Bind GroupedFields.View}"
           ItemTemplateSelector="{StaticResource FieldTemplates}"
           SelectionMode="None"
@@ -233,10 +284,10 @@
         </ListView.GroupStyle>
       </ListView>
 
-      <TextBlock Grid.Row="2" Text="{x:Bind ViewModel.Editor.Message, Mode=OneWay}" TextWrapping="Wrap" Padding="0,8,8,0"
+      <TextBlock Grid.Row="3" Text="{x:Bind ViewModel.Editor.Message, Mode=OneWay}" Visibility="{x:Bind views:Ui.CollapsedIf(ViewModel.Editor.HasPhoto), Mode=OneWay}" TextWrapping="Wrap" Padding="0,8,8,0"
                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
-      <ProgressBar Grid.Row="2" IsIndeterminate="True" VerticalAlignment="Top" Margin="0,0,8,0"
+      <ProgressBar Grid.Row="3" IsIndeterminate="True" VerticalAlignment="Top" Margin="0,0,8,0"
                    Visibility="{x:Bind ViewModel.Editor.IsLoading, Mode=OneWay}" />
     </Grid>
 

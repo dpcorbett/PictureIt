@@ -1,10 +1,10 @@
+using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Documents;
-using Microsoft.UI.Xaml.Media;
-using PictureIt.Core.Catalog;
+using PictureIt.App.Dialogs;
 using PictureIt.Core.Model;
 using PictureIt.Presentation.Services;
+using PictureIt.Presentation.ViewModels.Tools;
 
 namespace PictureIt.App.Services;
 
@@ -13,27 +13,20 @@ public sealed class DialogService(WindowContext window) : IDialogService
     public async Task<bool> ConfirmChangesAsync(ChangePreview preview)
     {
         ArgumentNullException.ThrowIfNull(preview);
-        var file = preview.Files.Count == 1 ? Path.GetFileName(preview.Files[0].FilePath) : $"{preview.Files.Count} photos";
+        var target = preview.ChangedFileCount == 1
+            ? Path.GetFileName(preview.Files.First(f => f.Changes.Count > 0).FilePath)
+            : $"{preview.ChangedFileCount} photos";
 
-        var changes = new StackPanel { Spacing = 12 };
-        foreach (var change in preview.Files.SelectMany(f => f.Changes))
-        {
-            changes.Children.Add(ChangeRow(change));
-        }
-
-        var dialog = Create(
-            $"Save changes to {file}?",
-            new ScrollViewer { Content = changes, MaxHeight = 420 });
+        var dialog = Create($"Save changes to {target}?", new ChangePreviewView(preview));
         dialog.PrimaryButtonText = "Save";
         dialog.CloseButtonText = "Cancel";
         dialog.DefaultButton = ContentDialogButton.Primary;
-
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 
     public async Task<UnsavedChangesChoice> AskToSaveChangesAsync(string fileName)
     {
-        var dialog = Create("Unsaved changes", new TextBlock { Text = $"Save your changes to {fileName}?", TextWrapping = TextWrapping.Wrap });
+        var dialog = Create("Unsaved changes", Text($"Save your changes to {fileName}?"));
         dialog.PrimaryButtonText = "Save";
         dialog.SecondaryButtonText = "Don't save";
         dialog.CloseButtonText = "Cancel";
@@ -47,11 +40,136 @@ public sealed class DialogService(WindowContext window) : IDialogService
         };
     }
 
+    public async Task<bool> ConfirmAsync(string title, string message, string confirmText)
+    {
+        var dialog = Create(title, Text(message));
+        dialog.PrimaryButtonText = confirmText;
+        dialog.CloseButtonText = "Cancel";
+        dialog.DefaultButton = ContentDialogButton.Close;
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
     public async Task ShowErrorAsync(string title, string message)
     {
-        var dialog = Create(title, new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
+        var dialog = Create(title, Text(message));
         dialog.CloseButtonText = "OK";
         await dialog.ShowAsync();
+    }
+
+    public Task ShowInfoAsync(string title, string message) => ShowErrorAsync(title, message);
+
+    public async Task ShowWriteFailuresAsync(WriteResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        var failures = new StackPanel { Spacing = 10 };
+        foreach (var file in result.Files.Where(f => !f.Succeeded))
+        {
+            failures.Children.Add(new StackPanel
+            {
+                Children =
+                {
+                    new TextBlock { Text = Path.GetFileName(file.FilePath), Style = Resource<Style>("BodyStrongTextBlockStyle") },
+                    Text(file.Error ?? "Unknown error"),
+                },
+            });
+        }
+
+        var content = new StackPanel
+        {
+            Spacing = 12,
+            Children =
+            {
+                Text($"{result.SucceededCount} of {result.Files.Count} photos were saved. These weren't:"),
+                new ScrollViewer { Content = failures, MaxHeight = 360 },
+            },
+        };
+
+        var dialog = Create("Some photos weren't saved", content);
+        dialog.CloseButtonText = "OK";
+        await dialog.ShowAsync();
+    }
+
+    public async Task<string?> PromptAsync(string title, string label, string initialText)
+    {
+        var box = new TextBox { Header = label, Text = initialText, Width = 360 };
+        box.SelectAll();
+        var dialog = Create(title, box);
+        dialog.PrimaryButtonText = "OK";
+        dialog.CloseButtonText = "Cancel";
+        dialog.DefaultButton = ContentDialogButton.Primary;
+        box.TextChanged += (_, _) => dialog.IsPrimaryButtonEnabled = box.Text.Trim().Length > 0;
+        return await dialog.ShowAsync() == ContentDialogResult.Primary ? box.Text.Trim() : null;
+    }
+
+    public async Task<bool> ShowToolAsync(ToolViewModel tool)
+    {
+        ArgumentNullException.ThrowIfNull(tool);
+        UIElement content = tool switch
+        {
+            FindReplaceToolViewModel findReplace => new FindReplaceView(findReplace),
+            ShiftDatesToolViewModel shiftDates => new ShiftDatesView(shiftDates),
+            RemoveMetadataToolViewModel remove => new RemoveMetadataView(remove),
+            PasteMetadataToolViewModel paste => new PasteMetadataView(paste),
+            _ => throw new ArgumentException($"No view for {tool.GetType().Name}.", nameof(tool)),
+        };
+
+        var dialog = Create(tool.Title, content);
+        dialog.PrimaryButtonText = tool.ConfirmText;
+        dialog.CloseButtonText = "Cancel";
+        dialog.DefaultButton = ContentDialogButton.Primary;
+        dialog.IsPrimaryButtonEnabled = tool.CanApply;
+
+        void OnToolChanged(object? sender, PropertyChangedEventArgs e) => dialog.IsPrimaryButtonEnabled = tool.CanApply;
+        tool.PropertyChanged += OnToolChanged;
+        try
+        {
+            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        }
+        finally
+        {
+            tool.PropertyChanged -= OnToolChanged;
+        }
+    }
+
+    public async Task<T> RunWithProgressAsync<T>(string title, Func<IProgress<WriteProgress>, CancellationToken, Task<T>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        using var cancellation = new CancellationTokenSource();
+        var bar = new ProgressBar { IsIndeterminate = true, Width = 420 };
+        var status = new TextBlock { Text = "Starting…", TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 420 };
+        var dialog = Create(title, new StackPanel { Spacing = 12, Children = { status, bar } });
+        dialog.CloseButtonText = "Cancel";
+
+        // Cancel asks the work to stop after the current photo; the dialog closes when the work does.
+        dialog.CloseButtonClick += (_, args) =>
+        {
+            args.Cancel = true;
+            status.Text = "Stopping after the current photo…";
+            cancellation.Cancel();
+        };
+
+        // Progress<T> reports on the UI thread, since it's created here.
+        var progress = new Progress<WriteProgress>(p =>
+        {
+            bar.IsIndeterminate = false;
+            bar.Maximum = Math.Max(1, p.Total);
+            bar.Value = p.Completed;
+            if (!cancellation.IsCancellationRequested)
+            {
+                status.Text = p.Completed < p.Total ? $"{p.Completed + 1} of {p.Total}: {Path.GetFileName(p.CurrentFile)}" : "Finishing…";
+            }
+        });
+
+        var shown = dialog.ShowAsync();
+        try
+        {
+            return await work(progress, cancellation.Token);
+        }
+        finally
+        {
+            dialog.Hide();
+            await shown;
+        }
     }
 
     private ContentDialog Create(string title, object content) => new()
@@ -59,34 +177,11 @@ public sealed class DialogService(WindowContext window) : IDialogService
         Title = title,
         Content = content,
         XamlRoot = window.XamlRoot,
-        Style = (Style)Application.Current.Resources["DefaultContentDialogStyle"],
+        Style = Resource<Style>("DefaultContentDialogStyle"),
         RequestedTheme = (window.RequiredWindow.Content as FrameworkElement)?.RequestedTheme ?? ElementTheme.Default,
     };
 
-    private static StackPanel ChangeRow(TagChange change)
-    {
-        var name = TagCatalog.FindCommonField(change.Key)?.DisplayName ?? change.Key.ToString();
-        var secondary = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+    private static TextBlock Text(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
 
-        var values = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        if (change.OldValue is not null)
-        {
-            values.Inlines.Add(new Run { Text = change.OldValue, Foreground = secondary, TextDecorations = Windows.UI.Text.TextDecorations.Strikethrough });
-            values.Inlines.Add(new Run { Text = "  →  ", Foreground = secondary });
-        }
-
-        values.Inlines.Add(change.NewValue is null
-            ? new Run { Text = "(removed)", FontStyle = Windows.UI.Text.FontStyle.Italic, Foreground = secondary }
-            : new Run { Text = change.NewValue });
-
-        return new StackPanel
-        {
-            Spacing = 2,
-            Children =
-            {
-                new TextBlock { Text = name, Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] },
-                values,
-            },
-        };
-    }
+    private static T Resource<T>(string key) => (T)Application.Current.Resources[key];
 }

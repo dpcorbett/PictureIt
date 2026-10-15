@@ -16,6 +16,9 @@ public sealed record ChangePreview(EditSet EditSet, IReadOnlyList<FileChangePrev
 {
     public int ChangeCount => Files.Sum(f => f.Changes.Count);
 
+    /// <summary>Files that would actually change.</summary>
+    public int ChangedFileCount => Files.Count(f => f.Changes.Count > 0);
+
     public bool IsEmpty => ChangeCount == 0;
 
     /// <param name="editSet">The planned edits.</param>
@@ -29,19 +32,31 @@ public sealed record ChangePreview(EditSet EditSet, IReadOnlyList<FileChangePrev
         foreach (var file in editSet.Files)
         {
             currentMetadata.TryGetValue(file.FilePath, out var metadata);
-            var changes = new List<TagChange>();
 
             // Apply edits in order so later edits to the same tag see earlier ones, as the writer does.
             var working = new Dictionary<TagKey, IReadOnlyList<string>?>();
+            var raw = new Dictionary<TagKey, bool>();
             foreach (var edit in file.Edits)
             {
-                var before = working.TryGetValue(edit.Key, out var pending) ? pending : CurrentValues(metadata, edit.Key);
+                if (edit.Key.IsPattern)
+                {
+                    foreach (var tag in metadata?.Tags.Where(t => t.IsWritable && TagPattern.Matches(edit.Key, t.Key)) ?? [])
+                    {
+                        working[tag.Key] = null;
+                    }
+
+                    continue;
+                }
+
+                var before = working.TryGetValue(edit.Key, out var pending) ? pending : CurrentValues(metadata, edit.Key, edit.Raw);
                 working[edit.Key] = ListEdits.Apply(before, edit);
+                raw[edit.Key] = edit.Raw;
             }
 
+            var changes = new List<TagChange>();
             foreach (var (key, after) in working)
             {
-                var oldValue = Display(CurrentValues(metadata, key));
+                var oldValue = Display(CurrentValues(metadata, key, raw.GetValueOrDefault(key)));
                 var newValue = Display(after);
                 if (oldValue != newValue)
                 {
@@ -55,8 +70,15 @@ public sealed record ChangePreview(EditSet EditSet, IReadOnlyList<FileChangePrev
         return new ChangePreview(editSet, files);
     }
 
-    private static IReadOnlyList<string>? CurrentValues(ImageMetadata? metadata, TagKey key) =>
-        metadata is not null && metadata.TryGetTag(key, out var tag) ? tag.Values : null;
+    private static IReadOnlyList<string>? CurrentValues(ImageMetadata? metadata, TagKey key, bool raw)
+    {
+        if (metadata is null || !metadata.TryGetTag(key, out var tag))
+        {
+            return null;
+        }
+
+        return raw && tag.RawValue is { } rawValue ? [rawValue] : tag.Values;
+    }
 
     private static string? Display(IReadOnlyList<string>? values) => values is null ? null : TagCatalog.JoinList(values);
 }

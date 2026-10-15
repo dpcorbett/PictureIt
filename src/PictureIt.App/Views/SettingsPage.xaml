@@ -47,6 +47,27 @@
         </StackPanel>
         <Button Grid.Column="2" Content="Open folder" VerticalAlignment="Center" Click="OnOpenBackupFolder" />
       </Grid>
+      <Grid Padding="16" ColumnSpacing="16" Margin="0,4,0,0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <FontIcon Glyph="&#xE81C;" VerticalAlignment="Center" />
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock Text="Keep backups for" />
+          <TextBlock Text="Older backups are deleted when PictureIt starts; their changes can then no longer be undone."
+                     Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+        </StackPanel>
+        <ComboBox x:Name="RetentionBox" Grid.Column="2" MinWidth="160" VerticalAlignment="Center" SelectionChanged="OnRetentionSelectionChanged">
+          <ComboBoxItem Content="1 week" Tag="7" />
+          <ComboBoxItem Content="30 days" Tag="30" />
+          <ComboBoxItem Content="90 days" Tag="90" />
+          <ComboBoxItem Content="1 year" Tag="365" />
+          <ComboBoxItem Content="Forever" Tag="0" />
+        </ComboBox>
+      </Grid>
     </StackPanel>
   </ScrollViewer>
 </Page>

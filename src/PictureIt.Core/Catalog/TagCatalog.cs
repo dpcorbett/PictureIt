@@ -64,6 +64,31 @@ public static partial class TagCatalog
         "DateTimeOriginal", "CreateDate", "ModifyDate", "DateTimeDigitized", "MetadataDate", "DateCreated",
     };
 
+    // ExifTool's MWG composite tags and the standard tags each one reads from and writes to.
+    private static readonly Dictionary<TagKey, TagKey[]> MwgComponentMap = new()
+    {
+        [TagKey.Parse("MWG:Description")] = Keys("IFD0:ImageDescription", "IPTC:Caption-Abstract", "XMP-dc:Description"),
+        [TagKey.Parse("MWG:Keywords")] = Keys("IPTC:Keywords", "XMP-dc:Subject"),
+        [TagKey.Parse("MWG:Creator")] = Keys("IFD0:Artist", "IPTC:By-line", "XMP-dc:Creator"),
+        [TagKey.Parse("MWG:Copyright")] = Keys("IFD0:Copyright", "IPTC:CopyrightNotice", "XMP-dc:Rights"),
+        [TagKey.Parse("MWG:DateTimeOriginal")] = Keys(
+            "ExifIFD:DateTimeOriginal", "ExifIFD:SubSecTimeOriginal", "ExifIFD:OffsetTimeOriginal",
+            "IPTC:DateCreated", "IPTC:TimeCreated", "XMP-photoshop:DateCreated"),
+        [TagKey.Parse("MWG:Location")] = Keys("IPTC:Sub-location", "XMP-iptcCore:Location", "XMP-iptcExt:LocationShownSublocation"),
+        [TagKey.Parse("MWG:City")] = Keys("IPTC:City", "XMP-photoshop:City", "XMP-iptcExt:LocationShownCity"),
+        [TagKey.Parse("MWG:State")] = Keys("IPTC:Province-State", "XMP-photoshop:State", "XMP-iptcExt:LocationShownProvinceState"),
+        [TagKey.Parse("MWG:Country")] = Keys("IPTC:Country-PrimaryLocationName", "XMP-photoshop:Country", "XMP-iptcExt:LocationShownCountryName"),
+        [TagKey.Parse("MWG:Rating")] = Keys("XMP-xmp:Rating"),
+    };
+
+    /// <summary>
+    /// The standard tags an MWG tag writes to (e.g. MWG:Copyright → IFD0:Copyright, IPTC:CopyrightNotice, XMP-dc:Rights).
+    /// Empty for anything else.
+    /// </summary>
+    public static IReadOnlyList<TagKey> MwgComponents(TagKey key) => MwgComponentMap.GetValueOrDefault(key) ?? [];
+
+    private static TagKey[] Keys(params string[] keys) => [.. keys.Select(TagKey.Parse)];
+
     /// <summary>Returns the common field definition when <paramref name="key"/> is one of <see cref="CommonFields"/>.</summary>
     public static CommonField? FindCommonField(TagKey key) => CommonByKey.GetValueOrDefault(key);
 

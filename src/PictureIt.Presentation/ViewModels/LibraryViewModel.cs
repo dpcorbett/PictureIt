@@ -29,17 +29,22 @@ public sealed partial class LibraryViewModel : ObservableObject
         IFolderPicker folderPicker,
         ISettingsStore settings,
         IPhotoSummaryReader summaryReader,
-        MetadataEditorViewModel editor)
+        MetadataEditorViewModel editor,
+        ToolsViewModel tools)
     {
         _folderPicker = folderPicker;
         _settings = settings;
         _summaryReader = summaryReader;
         Editor = editor;
+        Tools = tools;
         RecentFolders = [.. settings.Load().RecentFolders];
         StatusText = string.Empty;
     }
 
     public MetadataEditorViewModel Editor { get; }
+
+    /// <summary>Bulk tools (templates, find and replace, shift dates...) for the selection.</summary>
+    public ToolsViewModel Tools { get; }
 
     public ObservableCollection<PhotoItemViewModel> Photos { get; } = [];
 
@@ -172,7 +177,7 @@ public sealed partial class LibraryViewModel : ObservableObject
     public async Task<bool> SelectAsync(IReadOnlyList<PhotoItemViewModel> selection)
     {
         ArgumentNullException.ThrowIfNull(selection);
-        var stayingOnSamePhoto = selection.Count == 1 && Editor.FilePath == selection[0].FilePath;
+        var stayingOnSamePhoto = selection.Select(p => p.FilePath).SequenceEqual(Editor.RequestedPaths, StringComparer.OrdinalIgnoreCase);
         if (!stayingOnSamePhoto && !await Editor.ConfirmLeaveAsync())
         {
             return false;
