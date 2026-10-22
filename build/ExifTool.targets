@@ -20,10 +20,9 @@
   </PropertyGroup>
 
   <Target Name="AcquireExifTool" Condition="!Exists('$(ExifToolHome)exiftool.exe')">
-    <DownloadFile SourceUrl="$(ExifToolUrl)"
-                  DestinationFolder="$(ExifToolCacheDir)"
-                  DestinationFileName="$(ExifToolPackageName).zip"
-                  Retries="3" />
+    <!-- SourceForge answers 403 to the default .NET user agent on some networks (e.g. GitHub runners) and an HTML page to browser ones, so use curl.exe (ships with Windows) with its own.-->
+    <MakeDir Directories="$(ExifToolCacheDir)" />
+    <Exec Command="curl.exe --location --fail --silent --show-error --retry 3 --retry-delay 5 --output &quot;$(ExifToolZip)&quot; &quot;$(ExifToolUrl)&quot;" />
 
     <GetFileHash Files="$(ExifToolZip)" Algorithm="SHA256">
       <Output TaskParameter="Hash" PropertyName="_ExifToolActualSha256" />

@@ -15,6 +15,11 @@ jobs:
         with:
           global-json-file: global.json
 
+      - uses: actions/cache@v4
+        with:
+          path: tools/exiftool
+          key: exiftool-${{ hashFiles('build/ExifTool.targets') }}
+
       - name: Restore
         run: dotnet restore src/PictureIt.sln
 
