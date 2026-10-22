@@ -3,6 +3,7 @@ using PictureIt.Core.Abstractions;
 using PictureIt.Core.History;
 using PictureIt.Core.Model;
 using PictureIt.Core.Organise;
+using PictureIt.Core.Search;
 using PictureIt.Core.Settings;
 using PictureIt.Core.Templates;
 using PictureIt.Presentation.Services;
@@ -138,6 +139,14 @@ internal sealed class Harness
 
     public IPhotoSummaryReader Summaries { get; } = Substitute.For<IPhotoSummaryReader>();
 
+    public IPhotoCatalog Catalog { get; } = Substitute.For<IPhotoCatalog>();
+
+    public FakeFolderWatchers Watchers { get; } = new();
+
+    public IUiThread UiThread { get; } = new ImmediateUiThread();
+
+    public InMemorySavedSearchStore SavedSearches { get; } = new();
+
     public InMemorySettingsStore Settings { get; } = new();
 
     public InMemoryHistoryStore History { get; } = new();
@@ -169,7 +178,12 @@ internal sealed class Harness
     public HistoryViewModel CreateHistory() => new(History, Backups, Organiser, Dialogs, Messenger, Time);
 
     public LibraryViewModel CreateLibrary(IPhotoSummaryReader? summaries = null) =>
-        new(FolderPicker, Settings, summaries ?? Summaries, Editor, Tools, Organise, Messenger);
+        new(FolderPicker, Settings, summaries ?? Summaries, Editor, Tools, Organise, new LibraryServices(Messenger, Watchers, UiThread));
+
+    public CatalogSync CreateCatalogSync() => new(Catalog, Watchers, UiThread, Messenger);
+
+    public SearchViewModel CreateSearch(LibraryViewModel library, CatalogSync sync) =>
+        new(Catalog, new SearchServices(library, sync, SavedSearches, Dialogs, FolderPicker, Messenger)) { SearchDelay = TimeSpan.Zero };
 
     public static FileOperationResult Succeeded(FilePlan plan) =>
         new(plan.BatchId, [.. plan.Changes.Select(o => new FileOperationOutcome(o.SourcePath, o.TargetPath, true, null))], []);
@@ -201,4 +215,51 @@ internal static class Metadata
         ("ExifIFD:ExposureTime", "1/250"),
         ("File:FileType", "JPEG"),
         ("Composite:GPSPosition", "51 deg N, 0 deg W"));
+}
+
+internal sealed class ImmediateUiThread : IUiThread
+{
+    public void Post(Action action) => action();
+}
+
+internal sealed class InMemorySavedSearchStore : ISavedSearchStore
+{
+    public List<SavedSearch> Searches { get; set; } = [];
+
+    public IReadOnlyList<SavedSearch> Load() => Searches;
+
+    public void Save(IReadOnlyList<SavedSearch> searches) => Searches = [.. searches];
+}
+
+/// <summary>Records what's watched; <see cref="Fire"/> simulates a change in a watched folder.</summary>
+internal sealed class FakeFolderWatchers : IFolderWatcherFactory
+{
+    private readonly List<(string Folder, Action<IReadOnlyList<string>> Changed, Subscription Handle)> _watches = [];
+
+    public IReadOnlyList<string> Watched => [.. _watches.Where(w => !w.Handle.Disposed).Select(w => w.Folder)];
+
+    public IDisposable Watch(string folder, bool includeSubfolders, Action<IReadOnlyList<string>> changed)
+    {
+        var handle = new Subscription();
+        _watches.Add((folder, changed, handle));
+        return handle;
+    }
+
+    public void Fire(string folder, params string[] paths)
+    {
+        foreach (var (watched, changed, handle) in _watches.ToList())
+        {
+            if (!handle.Disposed && string.Equals(watched, folder, StringComparison.OrdinalIgnoreCase))
+            {
+                changed(paths);
+            }
+        }
+    }
+
+    internal sealed class Subscription : IDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
+    }
 }

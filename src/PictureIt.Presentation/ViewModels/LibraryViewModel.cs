@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using PictureIt.Core.Abstractions;
 using PictureIt.Core.History;
 using PictureIt.Core.Model;
+using PictureIt.Core.Search;
 using PictureIt.Core.Settings;
 using PictureIt.Presentation.Services;
 
@@ -18,14 +19,20 @@ public sealed class PhotoItemViewModel(string filePath)
     public string FileName { get; } = Path.GetFileName(filePath);
 }
 
-/// <summary>The folder being browsed, its photos, the selection, and the editor for the selection.</summary>
-public sealed partial class LibraryViewModel : ObservableObject, IRecipient<FolderChangedMessage>
+/// <summary>
+/// What the library shows (a folder, or the results of a search), its photos, the selection, and the editor for
+/// the selection.
+/// </summary>
+public sealed partial class LibraryViewModel : ObservableObject, IRecipient<FolderChangedMessage>, IRecipient<CatalogChangedMessage>, IDisposable
 {
     private readonly IFolderPicker _folderPicker;
     private readonly ISettingsStore _settings;
     private readonly IPhotoSummaryReader _summaryReader;
+    private readonly LibraryServices _services;
     private int _summaryVersion;
     private IReadOnlyList<PhotoItemViewModel>? _pendingSelection;
+    private IDisposable? _folderWatch;
+    private Func<Task<IReadOnlyList<string>>>? _reloadResults;
 
     public LibraryViewModel(
         IFolderPicker folderPicker,
@@ -34,16 +41,18 @@ public sealed partial class LibraryViewModel : ObservableObject, IRecipient<Fold
         MetadataEditorViewModel editor,
         ToolsViewModel tools,
         OrganiseViewModel organise,
-        IMessenger messenger)
+        LibraryServices services)
     {
-        ArgumentNullException.ThrowIfNull(messenger);
+        ArgumentNullException.ThrowIfNull(services);
         _folderPicker = folderPicker;
         _settings = settings;
         _summaryReader = summaryReader;
+        _services = services;
         Editor = editor;
         Tools = tools;
         Organise = organise;
-        messenger.Register(this);
+        services.Messenger.Register<FolderChangedMessage>(this);
+        services.Messenger.Register<CatalogChangedMessage>(this);
         RecentFolders = [.. settings.Load().RecentFolders];
         StatusText = string.Empty;
     }
@@ -62,13 +71,27 @@ public sealed partial class LibraryViewModel : ObservableObject, IRecipient<Fold
 
     public IReadOnlyList<PhotoItemViewModel> SelectedPhotos { get; private set; } = [];
 
+    /// <summary>The open folder, or null when showing search results (or nothing).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasFolder), nameof(FolderName))]
+    [NotifyPropertyChangedFor(nameof(HasFolder), nameof(FolderName), nameof(LocationText))]
     public partial string? CurrentFolder { get; private set; }
 
-    public bool HasFolder => CurrentFolder is not null;
+    /// <summary>What the search results are, e.g. "Canon EOS R5 · no copyright", or null when showing a folder.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFolder), nameof(FolderName), nameof(LocationText), nameof(IsShowingResults))]
+    public partial string? ResultsTitle { get; private set; }
 
-    public string FolderName => CurrentFolder is null ? string.Empty : Path.GetFileName(CurrentFolder) is { Length: > 0 } name ? name : CurrentFolder;
+    public bool IsShowingResults => ResultsTitle is not null;
+
+    /// <summary>True when a folder or search results are open.</summary>
+    public bool HasFolder => CurrentFolder is not null || IsShowingResults;
+
+    public string FolderName => IsShowingResults
+        ? "Search results"
+        : CurrentFolder is null ? string.Empty : Path.GetFileName(CurrentFolder) is { Length: > 0 } name ? name : CurrentFolder;
+
+    /// <summary>The folder's path, or what the search was.</summary>
+    public string LocationText => ResultsTitle ?? CurrentFolder ?? string.Empty;
 
     /// <summary>Camera and exposure summary for one selected photo, or a count for several.</summary>
     [ObservableProperty]
@@ -102,8 +125,12 @@ public sealed partial class LibraryViewModel : ObservableObject, IRecipient<Fold
             return false;
         }
 
+        ResultsTitle = null;
+        _reloadResults = null;
         CurrentFolder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
-        var files = await FillAsync(CurrentFolder);
+        var files = await ListFolderAsync(CurrentFolder);
+        ShowPhotos(files);
+        WatchFolder(CurrentFolder);
 
         var settings = _settings.Load().WithRecentFolder(CurrentFolder);
         _settings.Save(settings);
@@ -115,13 +142,37 @@ public sealed partial class LibraryViewModel : ObservableObject, IRecipient<Fold
 
         SelectedPhotos = [];
         await Editor.ShowSelectionAsync([]);
-        StatusText = files.Count == 1 ? "1 photo" : $"{files.Count} photos";
+        StatusText = Count(files.Count);
         return true;
     }
 
     /// <summary>
-    /// Re-reads the open folder after files were renamed, moved, copied or deleted, keeping the selection on the same
-    /// photos (under their new names) where they're still in the folder.
+    /// Shows search results (photos from any folders) so the editor and every tool work on them.
+    /// <paramref name="reload"/> re-runs the search when the catalogue changes.
+    /// </summary>
+    public async Task<bool> ShowResultsAsync(string title, IReadOnlyList<string> paths, Func<Task<IReadOnlyList<string>>> reload)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(title);
+        ArgumentNullException.ThrowIfNull(paths);
+        if (!await Editor.ConfirmLeaveAsync())
+        {
+            return false;
+        }
+
+        StopWatching();
+        CurrentFolder = null;
+        ResultsTitle = title;
+        _reloadResults = reload;
+        ShowPhotos(paths);
+        SelectedPhotos = [];
+        await Editor.ShowSelectionAsync([]);
+        StatusText = Count(paths.Count);
+        return true;
+    }
+
+    /// <summary>
+    /// Re-reads the open folder (or updates the results) after files were renamed, moved, copied or deleted, keeping
+    /// the selection on the same photos (under their new names) where they're still listed.
     /// </summary>
     public async void Receive(FolderChangedMessage message)
     {
@@ -136,9 +187,41 @@ public sealed partial class LibraryViewModel : ObservableObject, IRecipient<Fold
         }
     }
 
+    /// <summary>Re-runs the search shown, after the catalogue changed.</summary>
+    public async void Receive(CatalogChangedMessage message)
+    {
+        if (_reloadResults is not { } reload || Editor.IsDirty)
+        {
+            return;
+        }
+
+        try
+        {
+            var paths = await reload();
+            if (_reloadResults == reload)
+            {
+                await ReplacePhotosAsync([.. paths.Where(File.Exists)], new Dictionary<string, string>());
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            StatusText = $"Couldn't update the results: {ex.Message}";
+        }
+    }
+
     public async Task RefreshFolderAsync(IReadOnlyList<FileMove> moves)
     {
         ArgumentNullException.ThrowIfNull(moves);
+        var moved = moves.GroupBy(m => m.From, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Last().To, StringComparer.OrdinalIgnoreCase);
+
+        if (IsShowingResults)
+        {
+            // Results follow their photos wherever they went; deleted ones drop out.
+            var paths = Photos.Select(p => moved.GetValueOrDefault(p.FilePath) ?? p.FilePath).Where(File.Exists).ToList();
+            await ReplacePhotosAsync(paths, moved);
+            return;
+        }
+
         if (CurrentFolder is null)
         {
             return;
@@ -152,19 +235,13 @@ public sealed partial class LibraryViewModel : ObservableObject, IRecipient<Fold
             return;
         }
 
-        var moved = moves.GroupBy(m => m.From, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Last().To, StringComparer.OrdinalIgnoreCase);
-        var keep = SelectedPhotos.Select(p => moved.GetValueOrDefault(p.FilePath) ?? p.FilePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        await ReplacePhotosAsync(await ListFolderAsync(CurrentFolder), moved);
+    }
 
-        var files = await FillAsync(CurrentFolder);
-        SelectedPhotos = [];
-        await Editor.ShowSelectionAsync([]);
-        StatusText = files.Count == 1 ? "1 photo" : $"{files.Count} photos";
-
-        var reselect = Photos.Where(p => keep.Contains(p.FilePath)).ToList();
-        if (reselect.Count > 0)
-        {
-            RequestSelection(reselect);
-        }
+    public void Dispose()
+    {
+        StopWatching();
+        _services.Messenger.UnregisterAll(this);
     }
 
     /// <summary>Raised when the view should select these photos (after a drop or a command-line open).</summary>
@@ -215,24 +292,86 @@ public sealed partial class LibraryViewModel : ObservableObject, IRecipient<Fold
         }
     }
 
-    /// <summary>Lists the folder's photos into <see cref="Photos"/>.</summary>
-    private async Task<List<string>> FillAsync(string folder)
+    /// <summary>Shows a new list of photos, keeping the selected ones (following <paramref name="moved"/>) selected.</summary>
+    private async Task ReplacePhotosAsync(List<string> paths, IReadOnlyDictionary<string, string> moved)
     {
-        var files = await Task.Run(() => Directory
+        // Nothing changed (e.g. the catalogue updated after a save): leave the grid and selection alone.
+        if (paths.SequenceEqual(Photos.Select(p => p.FilePath), StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var keep = SelectedPhotos.Select(p => moved.GetValueOrDefault(p.FilePath) ?? p.FilePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        ShowPhotos(paths);
+        SelectedPhotos = [];
+        await Editor.ShowSelectionAsync([]);
+        StatusText = Count(paths.Count);
+
+        var reselect = Photos.Where(p => keep.Contains(p.FilePath)).ToList();
+        if (reselect.Count > 0)
+        {
+            RequestSelection(reselect);
+        }
+    }
+
+    private void ShowPhotos(IReadOnlyList<string> paths)
+    {
+        Photos.Clear();
+        foreach (var path in paths)
+        {
+            Photos.Add(new PhotoItemViewModel(path));
+        }
+
+        Organise.SetFolder(CurrentFolder, paths);
+    }
+
+    private static Task<List<string>> ListFolderAsync(string folder) =>
+        Task.Run(() => Directory
             .EnumerateFiles(folder)
             .Where(SupportedFormats.IsSupported)
             .Order(StringComparer.CurrentCultureIgnoreCase)
             .ToList());
 
-        Photos.Clear();
-        foreach (var file in files)
+    /// <summary>Notices photos added, removed or renamed in the open folder by other apps.</summary>
+    private void WatchFolder(string folder)
+    {
+        StopWatching();
+        try
         {
-            Photos.Add(new PhotoItemViewModel(file));
+            _folderWatch = _services.Watchers.Watch(folder, includeSubfolders: false, changed => _services.UiThread.Post(() => _ = OnFolderWatchAsync(folder)));
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException)
+        {
+            // Some locations (e.g. some network shares) can't be watched; the library still works without it.
+            _folderWatch = null;
+        }
+    }
+
+    private async Task OnFolderWatchAsync(string folder)
+    {
+        // Edits in progress win; the next change (or reopening the folder) catches up.
+        if (CurrentFolder != folder || Editor.IsDirty)
+        {
+            return;
         }
 
-        Organise.SetFolder(folder, files);
-        return files;
+        try
+        {
+            await ReplacePhotosAsync(await ListFolderAsync(folder), new Dictionary<string, string>());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            StatusText = $"Couldn't re-read the folder: {ex.Message}";
+        }
     }
+
+    private void StopWatching()
+    {
+        _folderWatch?.Dispose();
+        _folderWatch = null;
+    }
+
+    private static string Count(int count) => count == 1 ? "1 photo" : $"{count} photos";
 
     /// <summary>Returns (and forgets) a selection requested before the view was listening.</summary>
     public IReadOnlyList<PhotoItemViewModel>? TakePendingSelection()
@@ -288,3 +427,6 @@ public sealed partial class LibraryViewModel : ObservableObject, IRecipient<Fold
         RecentFolders.Remove(folder);
     }
 }
+
+/// <summary>Services the library uses to keep up with changes, gathered so its constructor stays readable.</summary>
+public sealed record LibraryServices(IMessenger Messenger, IFolderWatcherFactory Watchers, IUiThread UiThread);

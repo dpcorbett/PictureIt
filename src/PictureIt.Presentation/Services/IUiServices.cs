@@ -69,3 +69,18 @@ public sealed record FilesChangedMessage(IReadOnlyList<string> FilePaths);
 /// <see cref="Moves"/> says where renamed or moved files went (empty for copies and deletions).
 /// </summary>
 public sealed record FolderChangedMessage(IReadOnlyList<PictureIt.Core.History.FileMove> Moves);
+
+/// <summary>Sent after the catalogue changes (a scan, or files refreshed after an edit), so searches can update.</summary>
+public sealed record CatalogChangedMessage;
+
+/// <summary>Asks the main window to show a page, e.g. the Library after "Show in Library".</summary>
+public sealed record NavigateMessage(string Page)
+{
+    public const string Library = "Library";
+}
+
+/// <summary>Runs work on the UI thread, for things that happen on background threads (e.g. file watchers).</summary>
+public interface IUiThread
+{
+    void Post(Action action);
+}

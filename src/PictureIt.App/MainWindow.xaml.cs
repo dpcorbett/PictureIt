@@ -2,24 +2,29 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
+using CommunityToolkit.Mvvm.Messaging;
 using PictureIt.App.Views;
+using PictureIt.Presentation.Services;
 using PictureIt.Presentation.ViewModels;
 using Windows.Graphics;
 
 namespace PictureIt.App;
 
-public sealed partial class MainWindow : Window
+public sealed partial class MainWindow : Window, IRecipient<NavigateMessage>
 {
     public const string LibraryTag = "library";
+    public const string SearchTag = "search";
     public const string TemplatesTag = "templates";
     public const string HistoryTag = "history";
 
     private readonly LibraryViewModel _library;
     private bool _closeConfirmed;
 
-    public MainWindow(LibraryViewModel library)
+    public MainWindow(LibraryViewModel library, IMessenger messenger)
     {
+        ArgumentNullException.ThrowIfNull(messenger);
         _library = library;
+        messenger.Register(this);
         InitializeComponent();
 
         ExtendsContentIntoTitleBar = true;
@@ -34,6 +39,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Switches to a page by its tag (see the *Tag constants).</summary>
     public void Navigate(string tag) => Navigation.SelectedItem = tag switch
     {
+        SearchTag => SearchItem,
         TemplatesTag => TemplatesItem,
         HistoryTag => HistoryItem,
         _ => LibraryItem,
@@ -45,6 +51,7 @@ public sealed partial class MainWindow : Window
             ? typeof(SettingsPage)
             : (args.SelectedItem as NavigationViewItem)?.Tag switch
             {
+                SearchTag => typeof(SearchPage),
                 TemplatesTag => typeof(TemplatesPage),
                 HistoryTag => typeof(HistoryPage),
                 _ => typeof(LibraryPage),
@@ -55,6 +62,12 @@ public sealed partial class MainWindow : Window
         {
             ContentFrame.Navigate(page, null, new EntranceNavigationTransitionInfo());
         }
+    }
+
+    public void Receive(NavigateMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        Navigate(message.Page == NavigateMessage.Library ? LibraryTag : message.Page.ToLowerInvariant());
     }
 
     private async void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)

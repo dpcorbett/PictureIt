@@ -184,7 +184,7 @@
       </StackPanel>
       <StackPanel Grid.Column="1" VerticalAlignment="Center" Visibility="{x:Bind ViewModel.HasFolder, Mode=OneWay}">
         <TextBlock Text="{x:Bind ViewModel.FolderName, Mode=OneWay}" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" />
-        <TextBlock Text="{x:Bind ViewModel.CurrentFolder, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}"
+        <TextBlock Text="{x:Bind ViewModel.LocationText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}"
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True" />
       </StackPanel>
     </Grid>

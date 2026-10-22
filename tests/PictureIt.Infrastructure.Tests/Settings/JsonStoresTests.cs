@@ -1,3 +1,4 @@
+using PictureIt.Core.Search;
 using PictureIt.Core.History;
 using PictureIt.Core.Model;
 using PictureIt.Core.Templates;
@@ -62,6 +63,28 @@ ew"]);
         old.Kind.ShouldBe(BatchKind.Metadata);
         old.Moves.ShouldBeEmpty();
         old.CanUndo.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Saved_searches_round_trip()
+    {
+        var store = new JsonSavedSearchStore(_files.PathFor("searches.json"));
+        var query = PhotoQuery.All with
+        {
+            Text = "big ben",
+            Camera = "Canon EOS R5",
+            TakenFrom = new DateOnly(2024, 6, 1),
+            MinFNumber = 1.8,
+            MinIso = 400,
+            Copyright = Presence.Missing,
+        };
+
+        store.Save([new SavedSearch("No copyright", query)]);
+
+        var loaded = store.Load().Single();
+        loaded.Name.ShouldBe("No copyright");
+        loaded.Query.ShouldBe(query);
+        File.ReadAllText(_files.PathFor("searches.json")).ShouldContain("\"Copyright\": \"Missing\"");
     }
 
     [Fact]

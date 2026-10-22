@@ -37,9 +37,10 @@ public sealed partial class OrganiseViewModel : ObservableObject
 
     private bool HasPhotos => _editor.HasPhoto && !_editor.IsLoading;
 
-    private bool HasFolderPhotos => CurrentFolder is not null && _folderPhotos.Count > 0;
+    /// <summary>True when a folder or search results with photos are open.</summary>
+    private bool HasFolderPhotos => _folderPhotos.Count > 0;
 
-    /// <summary>Called by the library when it opens or re-reads a folder.</summary>
+    /// <summary>Called by the library when it shows a folder (or search results, with no folder) or re-reads it.</summary>
     public void SetFolder(string? folder, IReadOnlyList<string> photos)
     {
         CurrentFolder = folder;

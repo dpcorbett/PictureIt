@@ -15,4 +15,7 @@ public static class Ui
 
     /// <summary>Faded for rows that won't change (e.g. in a rename preview).</summary>
     public static double DimIf(bool value) => value ? 0.5 : 1.0;
+
+    /// <summary>A 0–1 fraction as 0–100, for a ProgressBar used as a chart bar.</summary>
+    public static double Percent(double fraction) => fraction * 100;
 }

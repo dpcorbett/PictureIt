@@ -8,7 +8,9 @@ using PictureIt.Core.Settings;
 using PictureIt.Core.Templates;
 using PictureIt.Infrastructure.Backup;
 using PictureIt.Infrastructure.ExifTool;
+using PictureIt.Core.Search;
 using PictureIt.Infrastructure.Files;
+using PictureIt.Infrastructure.Search;
 using PictureIt.Infrastructure.Settings;
 using PictureIt.Infrastructure.Summary;
 using PictureIt.Presentation.Services;
@@ -35,7 +37,7 @@ public partial class App : Application
         var windowContext = new WindowContext();
         Services = ConfigureServices(windowContext);
 
-        _window = new MainWindow(Services.GetRequiredService<LibraryViewModel>());
+        _window = new MainWindow(Services.GetRequiredService<LibraryViewModel>(), Services.GetRequiredService<IMessenger>());
         windowContext.Window = _window;
         var settings = Services.GetRequiredService<ISettingsStore>().Load();
         Services.GetRequiredService<IThemeService>().Apply(settings.Theme);
@@ -52,6 +54,7 @@ public partial class App : Application
 
         // Expired backups are removed quietly in the background; a failure here mustn't affect the session.
         _ = CleanUpBackupsAsync(settings.BackupRetentionDays);
+        _ = WatchCatalogueAsync();
 
         // "PictureIt.exe <folder or photos>" — also what Explorer's "Open with" passes.
         var paths = Environment.GetCommandLineArgs().Skip(1).ToList();
@@ -73,6 +76,19 @@ public partial class App : Application
         }
     }
 
+    /// <summary>Keeps the catalogue current with changes made outside the app while it runs.</summary>
+    private static async Task WatchCatalogueAsync()
+    {
+        try
+        {
+            await Services.GetRequiredService<CatalogSync>().WatchFoldersAsync();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Data.Common.DbException)
+        {
+            // Searching still works; it just won't notice outside changes until a rescan.
+        }
+    }
+
     private static ServiceProvider ConfigureServices(WindowContext windowContext)
     {
         var services = new ServiceCollection();
@@ -85,6 +101,9 @@ public partial class App : Application
         services.AddSingleton<IPhotoSummaryReader, MetadataExtractorSummaryReader>();
         services.AddSingleton<IFileOrganiser, FileOrganiser>();
         services.AddSingleton<IDuplicateScanner, DuplicateScanner>();
+        services.AddSingleton<IPhotoCatalog>(sp => new SqlitePhotoCatalog(SqlitePhotoCatalog.DefaultDatabasePath, sp.GetRequiredService<IMetadataReader>()));
+        services.AddSingleton<IFolderWatcherFactory, FolderWatcherFactory>();
+        services.AddSingleton<ISavedSearchStore>(_ => new JsonSavedSearchStore(JsonSavedSearchStore.DefaultFilePath));
         services.AddSingleton<ISettingsStore>(_ => new JsonSettingsStore(JsonSettingsStore.DefaultFilePath));
         services.AddSingleton<IHistoryStore>(_ => new JsonHistoryStore(JsonHistoryStore.DefaultFilePath));
         services.AddSingleton<ITemplateStore>(_ => new JsonTemplateStore(JsonTemplateStore.DefaultFilePath));
@@ -100,11 +119,18 @@ public partial class App : Application
         services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<IRecycleBin, RecycleBinService>();
 
+        // Created here, on the UI thread, so it can find the dispatcher.
+        services.AddSingleton<IUiThread>(new UiThreadService());
+
         // Presentation
         services.AddSingleton<BatchRunner>();
         services.AddSingleton<FileOperationRunner>();
         services.AddSingleton<OrganiseServices>();
         services.AddSingleton<OrganiseViewModel>();
+        services.AddSingleton<CatalogSync>();
+        services.AddSingleton<LibraryServices>();
+        services.AddSingleton<SearchServices>();
+        services.AddSingleton<SearchViewModel>();
         services.AddSingleton<BackupCleanup>();
         services.AddSingleton<MetadataEditorViewModel>();
         services.AddSingleton<ToolsViewModel>();

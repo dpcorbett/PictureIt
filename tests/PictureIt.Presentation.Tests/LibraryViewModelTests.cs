@@ -175,8 +175,8 @@ public sealed class LibraryViewModelTests : IDisposable
         IReadOnlyList<PhotoItemViewModel>? requested = null;
         _library.SelectionRequested += (_, photos) => requested = photos;
 
-        _h.Messenger.Send(new FolderChangedMessage([new PictureIt.Core.History.FileMove(a.FilePath, renamed)]));
-        await Task.Yield();
+        // What the FolderChangedMessage handler does.
+        await _library.RefreshFolderAsync([new PictureIt.Core.History.FileMove(a.FilePath, renamed)]);
 
         _library.Photos.Select(p => p.FileName).ShouldContain("renamed.jpg");
         _library.Photos.Select(p => p.FileName).ShouldNotContain("a.jpg");
@@ -184,8 +184,64 @@ public sealed class LibraryViewModelTests : IDisposable
         _h.Organise.CurrentFolder.ShouldBe(_folder);
     }
 
+    [Fact]
+    public async Task Notices_photos_added_by_other_apps()
+    {
+        await _library.LoadFolderAsync(_folder);
+        _h.Watchers.Watched.ShouldBe([_folder]);
+        var added = Path.Combine(_folder, "added.jpg");
+        File.WriteAllText(added, string.Empty);
+
+        _h.Watchers.Fire(_folder, added);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+
+        _library.Photos.Select(p => p.FileName).ShouldContain("added.jpg");
+    }
+
+    [Fact]
+    public async Task Shows_search_results_from_any_folders_and_refreshes_them()
+    {
+        await _library.LoadFolderAsync(_folder);
+        var a = Path.Combine(_folder, "a.jpg");
+        var d = Path.Combine(_folder, "d.png");
+        IReadOnlyList<string> latest = [a, d];
+
+        (await _library.ShowResultsAsync("Canon EOS R5", [a], () => Task.FromResult(latest))).ShouldBeTrue();
+
+        _library.IsShowingResults.ShouldBeTrue();
+        _library.CurrentFolder.ShouldBeNull();
+        _library.HasFolder.ShouldBeTrue();
+        _library.LocationText.ShouldBe("Canon EOS R5");
+        _library.Photos.Select(p => p.FilePath).ShouldBe([a]);
+        _h.Watchers.Watched.ShouldBeEmpty();
+        _h.Organise.ImportMetadataCommand.CanExecute(null).ShouldBeTrue();
+
+        // The catalogue changed: the search runs again.
+        _h.Messenger.Send(new CatalogChangedMessage());
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+        _library.Photos.Select(p => p.FilePath).ShouldBe([a, d]);
+
+        // Opening a folder leaves the results.
+        await _library.LoadFolderAsync(_folder);
+        _library.IsShowingResults.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Results_follow_moved_photos()
+    {
+        var a = Path.Combine(_folder, "a.jpg");
+        await _library.ShowResultsAsync("x", [a], () => Task.FromResult<IReadOnlyList<string>>([a]));
+        var moved = Path.Combine(_folder, "moved.jpg");
+        File.Move(a, moved);
+
+        await _library.RefreshFolderAsync([new PictureIt.Core.History.FileMove(a, moved)]);
+
+        _library.Photos.Single().FilePath.ShouldBe(moved);
+    }
+
     public void Dispose()
     {
+        _library.Dispose();
         try
         {
             Directory.Delete(_folder, recursive: true);

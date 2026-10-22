@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-PictureIt is a Windows desktop app for viewing and editing photo metadata (EXIF/IPTC/XMP), with **bulk editing** as the core feature. It's built on .NET 10 with a WinUI 3 (Windows App SDK) UI. Development follows a phased plan (scaffold → metadata engine → app shell → bulk editing → organising → search → location → advanced → packaging). Phases 0–4 are done: browse a folder, edit one or many photos, apply bulk tools (templates, copy/paste, find and replace, shift dates, remove metadata), organise files (rename and sort from metadata, CSV/JSON export and import, find duplicates) and undo batches from History. Search and the SQLite catalogue (Phase 5) are next.
+PictureIt is a Windows desktop app for viewing and editing photo metadata (EXIF/IPTC/XMP), with **bulk editing** as the core feature. It's built on .NET 10 with a WinUI 3 (Windows App SDK) UI. Development follows a phased plan (scaffold → metadata engine → app shell → bulk editing → organising → search → location → advanced → packaging). Phases 0–5 are done: browse a folder, edit one or many photos, apply bulk tools (templates, copy/paste, find and replace, shift dates, remove metadata), organise files (rename and sort from metadata, CSV/JSON export and import, find duplicates), undo batches from History, and search a SQLite catalogue across folders (filters, saved searches, statistics). Location tools (Phase 6: map, geotagging, GPX) are next.
 
 ## Commands
 
@@ -33,6 +33,13 @@ The app's exe is `src\PictureIt.App\bin\x64\Debug\net10.0-windows10.0.26100.0\wi
 Design rule: every metadata write goes through **`BatchRunner`** (`Presentation/Services`): build an `EditSet` → `ChangePreview` → user confirms → write with progress and backup → record a `BatchRecord` in history → send `FilesChangedMessage` → report failures. Don't add write paths that skip it. Views that show files listen for `FilesChangedMessage` (CommunityToolkit `IMessenger`) and reload. Undo restores from the batch's backup and sends the same message.
 
 **The preview must match the write.** `PreviewMatchesWriteTests` (Infrastructure.Tests) predicts each bulk operation with `ChangePreview`, writes it with real ExifTool, re-reads the file, and fails if anything changed that the preview didn't show. Add a case there for every new operation.
+
+### Search and the catalogue (Core/Search, Infrastructure/Search)
+
+- `SqlitePhotoCatalog` (`%LocalAppData%\PictureIt\catalog.db`) indexes **catalogue folders** and everything below them. Each photo is one row (a `CatalogEntry`, built from metadata by `CatalogEntry.FromMetadata` using `PhotoFacts`), plus a `keywords` table and an FTS5 `photo_text` index for free text. Photos are read with the editing reader (ExifTool), so search sees what the editor sees.
+- Scans are incremental: only files whose size or modified time changed are read. **ExifTool `-P` keeps the modified time on writes**, so a rescan won't notice the app's own edits. `CatalogSync` (Presentation/Services) handles that: it re-reads files named in `FilesChangedMessage`, follows `FolderChangedMessage` moves, and watches catalogue folders (`IFolderWatcherFactory`, debounced) for changes made outside the app. It runs updates one at a time in the background, then sends `CatalogChangedMessage` on the UI thread (through `IUiThread`).
+- `PhotoQuery` is the search: free text (each word is a quoted FTS prefix term, so punctuation can't break the syntax) plus filters. `SearchViewModel` builds it from the page's controls and searches as they change (`SearchDelay`). `CatalogStatistics.From` charts any set of entries (pure Core).
+- **Search results open in the Library** (`LibraryViewModel.ShowResultsAsync`), so the editor and every tool work across folders. In that mode `CurrentFolder` is null and `ResultsTitle` describes the search. The results re-run on `CatalogChangedMessage` and follow moved files. The library also watches an open folder for photos added or removed by other apps. Refreshes skip while the editor has unsaved changes, and leave the grid alone when nothing changed.
 
 ### Organising (Core/Organise)
 
@@ -81,11 +88,14 @@ Tags are identified by `TagKey` (`Core/Model/TagKey.cs`), using ExifTool's group
 - Editor controls set `AutomationProperties.Name` (field name, "Save", etc.) for accessibility. UI Automation can also drive the app with these names.
 - Tool dialogs are user controls in `App/Dialogs`. `DialogService.ShowToolAsync` maps each tool view-model type to its view, so add a case there for a new tool. Metadata tools derive from `MetadataToolViewModel` (adds `EditsFor`); file tools derive from `FilePlanToolViewModel`. The dialog's confirm text follows `ConfirmText` as it changes. The change preview is `ChangePreviewView`. `ContentDialogMaxWidth` is raised to 960 in `App.xaml`, because the WinUI default (548) clips the table.
 - `NumberBox` values are `double` (NaN when cleared), so tool view-models bound to them use `double`.
+- Pages ask the window to navigate with `NavigateMessage` (e.g. Search → Library after "Show in Library"). Background threads reach the UI through `IUiThread` (`UiThreadService`, created on the UI thread in `ConfigureServices`).
+- WinUI has no `x:Array`; put fixed `ComboBox` choices inline as `<x:String>` items.
 
 ### Tests
 
 - `tests/TestData/sample.jpg` has known tags; the full list is in the doc comment on `TestFiles.SampleJpeg`. `sample.png` has none. Tests copy samples into a temp folder through `TestFiles` and never write to `TestData`.
 - ExifTool tests share one process through `[Collection(ExifToolCollectionDefinition.Name)]`. `ExifToolFixture.ImageDataHashAsync` hashes the pixel data only, which is how tests prove writes are lossless.
+- `SqlitePhotoCatalogTests` runs the catalogue against real ExifTool and a temp database. Presentation tests substitute `IPhotoCatalog` and use `FakeFolderWatchers.Fire` to simulate outside changes.
 - Presentation tests build everything through `Harness` (`tests/PictureIt.Presentation.Tests/Fakes.cs`). It wires a real `BatchRunner`, messenger and view-models to a `FakeMetadataReader`, in-memory stores and NSubstitute writer/dialogs. `Harness.Written` lists the edit sets that reached the writer.
 
 ## Build conventions
