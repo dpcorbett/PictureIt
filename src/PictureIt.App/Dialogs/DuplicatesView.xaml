@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="PictureIt.App.Dialogs.DuplicatesView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tools="using:PictureIt.Presentation.ViewModels.Tools">
+
+  <Grid RowSpacing="12" Width="840">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+    <TextBlock Text="{x:Bind Tool.Summary}" TextWrapping="Wrap" />
+
+    <ScrollViewer Grid.Row="1" MaxHeight="520" VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
+      <ItemsRepeater ItemsSource="{x:Bind Tool.Groups}">
+        <ItemsRepeater.Layout>
+          <StackLayout Spacing="20" />
+        </ItemsRepeater.Layout>
+        <ItemsRepeater.ItemTemplate>
+          <DataTemplate x:DataType="tools:DuplicateGroupViewModel">
+            <StackPanel Spacing="6">
+              <TextBlock Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+              <TextBlock Text="{x:Bind Hint}" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
+                         Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+              <!-- Side by side, so the copies can be compared. -->
+              <ItemsRepeater ItemsSource="{x:Bind Items}">
+                <ItemsRepeater.Layout>
+                  <UniformGridLayout MinItemWidth="190" MinItemHeight="236" MinColumnSpacing="8" MinRowSpacing="8" ItemsStretch="Fill" />
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                  <DataTemplate x:DataType="tools:DuplicateItemViewModel">
+                    <Grid Padding="8" RowSpacing="4" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6"
+                          ToolTipService.ToolTip="{x:Bind FilePath}">
+                      <Grid.RowDefinitions>
+                        <RowDefinition Height="130" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                      </Grid.RowDefinitions>
+                      <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="4">
+                        <Image Tag="{x:Bind FilePath}" Loaded="OnThumbnailLoaded" Stretch="Uniform" />
+                      </Border>
+                      <CheckBox Grid.Row="1" IsChecked="{x:Bind IsMarked, Mode=TwoWay}" AutomationProperties.Name="{x:Bind MarkLabel}" MinWidth="0">
+                        <TextBlock Text="{x:Bind FileName}" TextTrimming="CharacterEllipsis" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                      </CheckBox>
+                      <TextBlock Grid.Row="2" Text="{x:Bind Details}" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
+                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                      <TextBlock Grid.Row="3" Text="{x:Bind Folder}" Style="{StaticResource CaptionTextBlockStyle}" TextTrimming="CharacterEllipsis"
+                                 Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+              </ItemsRepeater>
+            </StackPanel>
+          </DataTemplate>
+        </ItemsRepeater.ItemTemplate>
+      </ItemsRepeater>
+    </ScrollViewer>
+
+    <TextBlock Grid.Row="2" Text="{x:Bind Tool.Error, Mode=OneWay}" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" />
+  </Grid>
+</UserControl>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Template placeholder from the original scaffold; superseded by Model/. Delete when convenient. -->
+    <Compile Remove="Class1.cs" />
+  </ItemGroup>
+
+</Project>

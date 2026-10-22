@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="PictureIt.App.Views.TemplatesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:PictureIt.Presentation.ViewModels">
+
+  <Grid Padding="32,8,32,0" RowSpacing="8">
+    <Grid.ColumnDefinitions>
+      <!-- Full width up to a comfortable reading width, left-aligned. -->
+      <ColumnDefinition Width="*" MaxWidth="960" />
+    </Grid.ColumnDefinitions>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <Grid ColumnSpacing="12">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <TextBlock Text="Templates" Style="{StaticResource TitleTextBlockStyle}" />
+      <Button Grid.Column="1" Command="{x:Bind ViewModel.ImportCommand}" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <FontIcon Glyph="&#xE8B5;" FontSize="14" />
+          <TextBlock Text="Import…" />
+        </StackPanel>
+      </Button>
+    </Grid>
+    <TextBlock Grid.Row="1" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,0,0,12"
+               Text="A template stamps the same details (copyright, creator, keywords, place) onto any photos you choose. To make one, fill in a photo in the Library and choose Templates › Save this photo as a template." />
+
+    <ListView Grid.Row="2" ItemsSource="{x:Bind ViewModel.Templates}" SelectionMode="None">
+      <ListView.ItemContainerStyle>
+        <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+          <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+          <Setter Property="Padding" Value="0" />
+          <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+      </ListView.ItemContainerStyle>
+      <ListView.ItemTemplate>
+        <DataTemplate x:DataType="vm:TemplateItemViewModel">
+          <Grid Padding="16,12" ColumnSpacing="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="2">
+              <TextBlock Text="{x:Bind Name}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+              <TextBlock Text="{x:Bind Summary}" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
+                         Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+              <Button Click="OnRenameClick" ToolTipService.ToolTip="Rename" AutomationProperties.Name="Rename">
+                <FontIcon Glyph="&#xE8AC;" FontSize="14" />
+              </Button>
+              <Button Click="OnExportClick" ToolTipService.ToolTip="Export to a file" AutomationProperties.Name="Export">
+                <FontIcon Glyph="&#xEDE1;" FontSize="14" />
+              </Button>
+              <Button Click="OnDeleteClick" ToolTipService.ToolTip="Delete" AutomationProperties.Name="Delete">
+                <FontIcon Glyph="&#xE74D;" FontSize="14" />
+              </Button>
+            </StackPanel>
+          </Grid>
+        </DataTemplate>
+      </ListView.ItemTemplate>
+    </ListView>
+
+    <TextBlock Grid.Row="2" Text="No templates yet." Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+               Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay}" />
+  </Grid>
+</Page>

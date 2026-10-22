@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="PictureIt.App.Dialogs.ChangePreviewView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:dialogs="using:PictureIt.App.Dialogs">
+
+  <Grid RowSpacing="8" Width="720">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <TextBlock x:Name="SummaryText" TextWrapping="Wrap" />
+
+    <TextBox Grid.Row="1" x:Name="FilterBox" PlaceholderText="Filter by photo, field or value"
+             TextChanged="OnFilterChanged" AutomationProperties.Name="Filter changes" />
+
+    <!-- Column headings -->
+    <Grid Grid.Row="2" ColumnSpacing="12" Padding="12,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="160" />
+        <ColumnDefinition Width="150" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <TextBlock Text="Photo" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+      <TextBlock Grid.Column="1" Text="Field" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+      <TextBlock Grid.Column="2" Text="Before → after" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+    </Grid>
+
+    <ListView Grid.Row="3" x:Name="Rows" SelectionMode="None" MaxHeight="380" MinHeight="120"
+              BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4">
+      <ListView.ItemTemplate>
+        <DataTemplate x:DataType="dialogs:PreviewRow">
+          <Grid ColumnSpacing="12" Padding="0,6">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="160" />
+              <ColumnDefinition Width="150" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{x:Bind FileName}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind FileName}" />
+            <TextBlock Grid.Column="1" Text="{x:Bind Field}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind FieldKey}"
+                       Style="{StaticResource BodyStrongTextBlockStyle}" />
+            <StackPanel Grid.Column="2">
+              <TextBlock Text="{x:Bind OldText}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                         TextDecorations="Strikethrough" Visibility="{x:Bind HasOld}" />
+              <TextBlock Text="{x:Bind NewText}" TextWrapping="Wrap" FontStyle="{x:Bind NewStyle}" />
+            </StackPanel>
+          </Grid>
+        </DataTemplate>
+      </ListView.ItemTemplate>
+    </ListView>
+  </Grid>
+</UserControl>

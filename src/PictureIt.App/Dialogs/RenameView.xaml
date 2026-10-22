@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="PictureIt.App.Dialogs.RenameView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:dialogs="using:PictureIt.App.Dialogs">
+
+  <StackPanel Spacing="12" Width="680">
+    <TextBlock Text="{x:Bind Tool.PhotoCountText}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+    <StackPanel Spacing="4">
+      <Grid ColumnSpacing="8">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBox Header="New name" Text="{x:Bind Tool.Pattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas"
+                 AutomationProperties.Name="New name pattern" />
+        <DropDownButton Grid.Column="1" Content="Insert" VerticalAlignment="Bottom" AutomationProperties.Name="Insert a token">
+          <DropDownButton.Flyout>
+            <MenuFlyout x:Name="TokenMenu" Placement="BottomEdgeAlignedRight" />
+          </DropDownButton.Flyout>
+        </DropDownButton>
+      </Grid>
+      <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                 Text="Tokens in braces are filled in from each photo, e.g. {DateTaken:yyyy-MM-dd} or {Camera}. Add |text for photos without the value, e.g. {City|Unknown}. The extension is kept." />
+    </StackPanel>
+
+    <StackPanel Orientation="Horizontal" Spacing="24">
+      <CheckBox Content="Number photos in the order they were taken" IsChecked="{x:Bind Tool.OrderByDateTaken, Mode=TwoWay}" VerticalAlignment="Bottom" />
+      <NumberBox Header="Numbers start at" Value="{x:Bind Tool.FirstNumber, Mode=TwoWay}" Minimum="0" Maximum="999999"
+                 SpinButtonPlacementMode="Compact" Width="150" />
+    </StackPanel>
+
+    <dialogs:FilePlanPreview Tool="{x:Bind Tool}" ListHeight="280" />
+  </StackPanel>
+</UserControl>

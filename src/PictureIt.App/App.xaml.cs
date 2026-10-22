@@ -1,0 +1,147 @@
+using CommunityToolkit.Mvvm.Messaging;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.UI.Xaml;
+using PictureIt.App.Services;
+using PictureIt.Core.Abstractions;
+using PictureIt.Core.History;
+using PictureIt.Core.Settings;
+using PictureIt.Core.Templates;
+using PictureIt.Infrastructure.Backup;
+using PictureIt.Infrastructure.ExifTool;
+using PictureIt.Core.Search;
+using PictureIt.Infrastructure.Files;
+using PictureIt.Infrastructure.Search;
+using PictureIt.Infrastructure.Settings;
+using PictureIt.Infrastructure.Summary;
+using PictureIt.Presentation.Services;
+using PictureIt.Presentation.ViewModels;
+
+namespace PictureIt.App;
+
+public partial class App : Application
+{
+    private MainWindow? _window;
+
+    public App()
+    {
+        InitializeComponent();
+    }
+
+    /// <summary>The app's services. Available once <see cref="OnLaunched"/> has run.</summary>
+    public static IServiceProvider Services { get; private set; } = null!;
+
+    public static MainWindow? MainWindow => (Current as App)?._window;
+
+    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    {
+        var windowContext = new WindowContext();
+        Services = ConfigureServices(windowContext);
+
+        _window = new MainWindow(Services.GetRequiredService<LibraryViewModel>(), Services.GetRequiredService<IMessenger>());
+        windowContext.Window = _window;
+        var settings = Services.GetRequiredService<ISettingsStore>().Load();
+        Services.GetRequiredService<IThemeService>().Apply(settings.Theme);
+
+        _window.Closed += async (_, _) =>
+        {
+            // Stops the shared ExifTool process cleanly.
+            if (Services is IAsyncDisposable disposable)
+            {
+                await disposable.DisposeAsync();
+            }
+        };
+        _window.Activate();
+
+        // Expired backups are removed quietly in the background; a failure here mustn't affect the session.
+        _ = CleanUpBackupsAsync(settings.BackupRetentionDays);
+        _ = WatchCatalogueAsync();
+
+        // "PictureIt.exe <folder or photos>" — also what Explorer's "Open with" passes.
+        var paths = Environment.GetCommandLineArgs().Skip(1).ToList();
+        if (paths.Count > 0)
+        {
+            _ = Services.GetRequiredService<LibraryViewModel>().OpenPathsAsync(paths);
+        }
+    }
+
+    private static async Task CleanUpBackupsAsync(int retentionDays)
+    {
+        try
+        {
+            await Task.Run(() => Services.GetRequiredService<BackupCleanup>().RunAsync(retentionDays));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Try again next launch.
+        }
+    }
+
+    /// <summary>Keeps the catalogue current with changes made outside the app while it runs.</summary>
+    private static async Task WatchCatalogueAsync()
+    {
+        try
+        {
+            await Services.GetRequiredService<CatalogSync>().WatchFoldersAsync();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Data.Common.DbException)
+        {
+            // Searching still works; it just won't notice outside changes until a rescan.
+        }
+    }
+
+    private static ServiceProvider ConfigureServices(WindowContext windowContext)
+    {
+        var services = new ServiceCollection();
+
+        // Engine and storage
+        services.AddSingleton(_ => new ExifToolProcess(ExifToolProcess.DefaultExecutablePath));
+        services.AddSingleton<IMetadataReader, ExifToolReader>();
+        services.AddSingleton<IBackupStore>(_ => new FileBackupStore(FileBackupStore.DefaultRootDirectory));
+        services.AddSingleton<IMetadataWriter>(sp => new ExifToolWriter(sp.GetRequiredService<ExifToolProcess>(), sp.GetRequiredService<IBackupStore>()));
+        services.AddSingleton<IPhotoSummaryReader, MetadataExtractorSummaryReader>();
+        services.AddSingleton<IFileOrganiser, FileOrganiser>();
+        services.AddSingleton<IDuplicateScanner, DuplicateScanner>();
+        services.AddSingleton<IPhotoCatalog>(sp => new SqlitePhotoCatalog(SqlitePhotoCatalog.DefaultDatabasePath, sp.GetRequiredService<IMetadataReader>()));
+        services.AddSingleton<IFolderWatcherFactory, FolderWatcherFactory>();
+        services.AddSingleton<ISavedSearchStore>(_ => new JsonSavedSearchStore(JsonSavedSearchStore.DefaultFilePath));
+        services.AddSingleton<ISettingsStore>(_ => new JsonSettingsStore(JsonSettingsStore.DefaultFilePath));
+        services.AddSingleton<IHistoryStore>(_ => new JsonHistoryStore(JsonHistoryStore.DefaultFilePath));
+        services.AddSingleton<ITemplateStore>(_ => new JsonTemplateStore(JsonTemplateStore.DefaultFilePath));
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IMessenger>(WeakReferenceMessenger.Default);
+
+        // Windows-specific UI services
+        services.AddSingleton(windowContext);
+        services.AddSingleton<FolderPickerService>();
+        services.AddSingleton<IFolderPicker>(sp => sp.GetRequiredService<FolderPickerService>());
+        services.AddSingleton<IFilePicker>(sp => sp.GetRequiredService<FolderPickerService>());
+        services.AddSingleton<IDialogService, DialogService>();
+        services.AddSingleton<IThemeService, ThemeService>();
+        services.AddSingleton<IRecycleBin, RecycleBinService>();
+
+        // Created here, on the UI thread, so it can find the dispatcher.
+        services.AddSingleton<IUiThread>(new UiThreadService());
+
+        // Presentation
+        services.AddSingleton<BatchRunner>();
+        services.AddSingleton<FileOperationRunner>();
+        services.AddSingleton<OrganiseServices>();
+        services.AddSingleton<OrganiseViewModel>();
+        services.AddSingleton<CatalogSync>();
+        services.AddSingleton<LibraryServices>();
+        services.AddSingleton<SearchServices>();
+        services.AddSingleton<SearchViewModel>();
+        services.AddSingleton<BackupCleanup>();
+        services.AddSingleton<MetadataEditorViewModel>();
+        services.AddSingleton<ToolsViewModel>();
+        services.AddSingleton<LibraryViewModel>();
+        services.AddSingleton<HistoryViewModel>();
+        services.AddTransient<TemplatesViewModel>();
+        services.AddTransient(sp => new SettingsViewModel(
+            sp.GetRequiredService<ISettingsStore>(),
+            sp.GetRequiredService<IThemeService>(),
+            FileBackupStore.DefaultRootDirectory));
+
+        return services.BuildServiceProvider();
+    }
+}

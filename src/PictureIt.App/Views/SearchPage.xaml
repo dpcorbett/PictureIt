@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="PictureIt.App.Views.SearchPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:PictureIt.App.Views"
+    xmlns:vm="using:PictureIt.Presentation.ViewModels"
+    xmlns:search="using:PictureIt.Core.Search"
+    NavigationCacheMode="Required">
+
+  <Page.Resources>
+    <Style x:Key="FilterLabel" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}">
+      <Setter Property="Margin" Value="0,8,0,0" />
+    </Style>
+  </Page.Resources>
+
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="340" />
+      <ColumnDefinition Width="*" />
+    </Grid.ColumnDefinitions>
+
+    <!-- Filters and catalogue folders -->
+    <Grid Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+          BorderThickness="0,1,1,0" CornerRadius="0,8,0,0">
+      <ScrollViewer Padding="16,12,16,16" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Search" Style="{StaticResource SubtitleTextBlockStyle}" />
+          <AutoSuggestBox PlaceholderText="Words in titles, descriptions, keywords, places…" QueryIcon="Find"
+                          Text="{x:Bind ViewModel.Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          AutomationProperties.Name="Search text" />
+
+          <Grid ColumnSpacing="8" Margin="0,4,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <DropDownButton Content="Saved searches" HorizontalAlignment="Stretch">
+              <DropDownButton.Flyout>
+                <MenuFlyout x:Name="SavedMenu" Placement="BottomEdgeAlignedLeft" Opening="OnSavedMenuOpening" />
+              </DropDownButton.Flyout>
+            </DropDownButton>
+            <Button Grid.Column="1" Command="{x:Bind ViewModel.SaveSearchCommand}" ToolTipService.ToolTip="Save this search"
+                    AutomationProperties.Name="Save this search">
+              <FontIcon Glyph="&#xE74E;" FontSize="14" />
+            </Button>
+            <Button Grid.Column="2" Command="{x:Bind ViewModel.ClearFiltersCommand}" ToolTipService.ToolTip="Clear all filters"
+                    AutomationProperties.Name="Clear all filters">
+              <FontIcon Glyph="&#xE894;" FontSize="14" />
+            </Button>
+          </Grid>
+
+          <TextBlock Text="Camera and lens" Style="{StaticResource FilterLabel}" />
+          <ComboBox ItemsSource="{x:Bind ViewModel.Cameras}" SelectedItem="{x:Bind ViewModel.Camera, Mode=TwoWay}" HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="Camera" />
+          <ComboBox ItemsSource="{x:Bind ViewModel.Lenses}" SelectedItem="{x:Bind ViewModel.Lens, Mode=TwoWay}" HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="Lens" />
+
+          <TextBlock Text="Keyword" Style="{StaticResource FilterLabel}" />
+          <ComboBox ItemsSource="{x:Bind ViewModel.Keywords}" SelectedItem="{x:Bind ViewModel.Keyword, Mode=TwoWay}" HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="Keyword" />
+
+          <TextBlock Text="Date taken" Style="{StaticResource FilterLabel}" />
+          <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <CalendarDatePicker PlaceholderText="From" Date="{x:Bind ViewModel.TakenFrom, Mode=TwoWay}" HorizontalAlignment="Stretch"
+                                AutomationProperties.Name="Taken from" />
+            <CalendarDatePicker Grid.Column="1" PlaceholderText="To" Date="{x:Bind ViewModel.TakenTo, Mode=TwoWay}" HorizontalAlignment="Stretch"
+                                AutomationProperties.Name="Taken to" />
+          </Grid>
+
+          <TextBlock Text="Rating" Style="{StaticResource FilterLabel}" />
+          <ComboBox SelectedIndex="{x:Bind ViewModel.MinRating, Mode=TwoWay}"
+                    HorizontalAlignment="Stretch" AutomationProperties.Name="Rating">
+            <x:String>Any</x:String>
+            <x:String>★ or more</x:String>
+            <x:String>★★ or more</x:String>
+            <x:String>★★★ or more</x:String>
+            <x:String>★★★★ or more</x:String>
+            <x:String>★★★★★</x:String>
+          </ComboBox>
+
+          <TextBlock Text="Settings" Style="{StaticResource FilterLabel}" />
+          <Grid ColumnSpacing="8" RowSpacing="6">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="80" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock Text="Focal (mm)" VerticalAlignment="Center" />
+            <NumberBox Grid.Column="1" PlaceholderText="Min" Value="{x:Bind ViewModel.MinFocalLength, Mode=TwoWay}" Minimum="0"
+                       AutomationProperties.Name="Minimum focal length" />
+            <NumberBox Grid.Column="2" PlaceholderText="Max" Value="{x:Bind ViewModel.MaxFocalLength, Mode=TwoWay}" Minimum="0"
+                       AutomationProperties.Name="Maximum focal length" />
+            <TextBlock Grid.Row="1" Text="Aperture (f/)" VerticalAlignment="Center" />
+            <NumberBox Grid.Row="1" Grid.Column="1" PlaceholderText="Min" Value="{x:Bind ViewModel.MinFNumber, Mode=TwoWay}" Minimum="0"
+                       AutomationProperties.Name="Minimum aperture" />
+            <NumberBox Grid.Row="1" Grid.Column="2" PlaceholderText="Max" Value="{x:Bind ViewModel.MaxFNumber, Mode=TwoWay}" Minimum="0"
+                       AutomationProperties.Name="Maximum aperture" />
+            <TextBlock Grid.Row="2" Text="ISO" VerticalAlignment="Center" />
+            <NumberBox Grid.Row="2" Grid.Column="1" PlaceholderText="Min" Value="{x:Bind ViewModel.MinIso, Mode=TwoWay}" Minimum="0"
+                       AutomationProperties.Name="Minimum ISO" />
+            <NumberBox Grid.Row="2" Grid.Column="2" PlaceholderText="Max" Value="{x:Bind ViewModel.MaxIso, Mode=TwoWay}" Minimum="0"
+                       AutomationProperties.Name="Maximum ISO" />
+          </Grid>
+
+          <TextBlock Text="Has or is missing" Style="{StaticResource FilterLabel}" />
+          <Grid ColumnSpacing="8" RowSpacing="6">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="120" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock Text="GPS location" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" SelectedIndex="{x:Bind ViewModel.LocationIndex, Mode=TwoWay}"
+                      HorizontalAlignment="Stretch" AutomationProperties.Name="GPS location">
+              <x:String>Any</x:String>
+              <x:String>Has</x:String>
+              <x:String>Missing</x:String>
+            </ComboBox>
+            <TextBlock Grid.Row="1" Text="Date taken" VerticalAlignment="Center" />
+            <ComboBox Grid.Row="1" Grid.Column="1" SelectedIndex="{x:Bind ViewModel.DateTakenIndex, Mode=TwoWay}"
+                      HorizontalAlignment="Stretch" AutomationProperties.Name="Has date taken">
+              <x:String>Any</x:String>
+              <x:String>Has</x:String>
+              <x:String>Missing</x:String>
+            </ComboBox>
+            <TextBlock Grid.Row="2" Text="Copyright" VerticalAlignment="Center" />
+            <ComboBox Grid.Row="2" Grid.Column="1" SelectedIndex="{x:Bind ViewModel.CopyrightIndex, Mode=TwoWay}"
+                      HorizontalAlignment="Stretch" AutomationProperties.Name="Copyright">
+              <x:String>Any</x:String>
+              <x:String>Has</x:String>
+              <x:String>Missing</x:String>
+            </ComboBox>
+            <TextBlock Grid.Row="3" Text="Keywords" VerticalAlignment="Center" />
+            <ComboBox Grid.Row="3" Grid.Column="1" SelectedIndex="{x:Bind ViewModel.KeywordsIndex, Mode=TwoWay}"
+                      HorizontalAlignment="Stretch" AutomationProperties.Name="Has keywords">
+              <x:String>Any</x:String>
+              <x:String>Has</x:String>
+              <x:String>Missing</x:String>
+            </ComboBox>
+          </Grid>
+
+          <!-- Catalogue folders -->
+          <Grid Margin="0,20,0,0" ColumnSpacing="4">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Catalogue folders" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Command="{x:Bind ViewModel.RescanAllCommand}" ToolTipService.ToolTip="Rescan every folder"
+                    AutomationProperties.Name="Rescan every folder">
+              <FontIcon Glyph="&#xE72C;" FontSize="14" />
+            </Button>
+            <Button Grid.Column="2" Command="{x:Bind ViewModel.AddFolderCommand}" ToolTipService.ToolTip="Add a folder to the catalogue"
+                    AutomationProperties.Name="Add a folder to the catalogue">
+              <FontIcon Glyph="&#xE710;" FontSize="14" />
+            </Button>
+          </Grid>
+          <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                     Text="Searches cover these folders and everything inside them. They're kept up to date while PictureIt is open." />
+          <ItemsControl ItemsSource="{x:Bind ViewModel.Folders}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:CatalogFolderViewModel">
+                <Grid ColumnSpacing="4" Padding="0,6" ToolTipService.ToolTip="{x:Bind Path}">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{x:Bind Summary}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Click="OnRescanClick" Background="Transparent" BorderThickness="0"
+                          ToolTipService.ToolTip="Rescan" AutomationProperties.Name="{x:Bind RescanLabel}">
+                    <FontIcon Glyph="&#xE72C;" FontSize="12" />
+                  </Button>
+                  <Button Grid.Column="2" Click="OnRemoveFolderClick" Background="Transparent" BorderThickness="0"
+                          ToolTipService.ToolTip="Remove from the catalogue" AutomationProperties.Name="{x:Bind RemoveLabel}">
+                    <FontIcon Glyph="&#xE711;" FontSize="12" />
+                  </Button>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+
+    <!-- Results -->
+    <Grid Grid.Column="1" Padding="20,12,16,0" RowSpacing="8">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+
+      <Grid ColumnSpacing="8">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="{x:Bind ViewModel.Summary, Mode=OneWay}" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+          <ProgressBar IsIndeterminate="True" Visibility="{x:Bind ViewModel.IsSearching, Mode=OneWay}" Margin="0,4,0,0" />
+        </StackPanel>
+        <ToggleButton Grid.Column="1" IsChecked="{x:Bind ViewModel.ShowStatistics, Mode=TwoWay}" AutomationProperties.Name="Statistics">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <FontIcon Glyph="&#xE9D2;" FontSize="14" />
+            <TextBlock Text="Statistics" />
+          </StackPanel>
+        </ToggleButton>
+        <Button Grid.Column="2" Command="{x:Bind ViewModel.ShowInLibraryCommand}" Style="{StaticResource AccentButtonStyle}"
+                ToolTipService.ToolTip="Open these photos in the Library to view and edit them" AutomationProperties.Name="Show in Library">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <FontIcon Glyph="&#xE8B9;" FontSize="14" />
+            <TextBlock Text="Show in Library" />
+          </StackPanel>
+        </Button>
+      </Grid>
+
+      <InfoBar Grid.Row="1" Severity="Informational" IsOpen="{x:Bind ViewModel.HasMessage, Mode=OneWay}" Message="{x:Bind ViewModel.Message, Mode=OneWay}"
+               IsClosable="False" />
+
+      <!-- Photos (the first few hundred; Show in Library shows them all) -->
+      <GridView Grid.Row="2" x:Name="ResultsGrid" ItemsSource="{x:Bind ViewModel.Results}" SelectionMode="None" IsItemClickEnabled="True"
+                ItemClick="OnResultClick" ContainerContentChanging="OnResultContainerContentChanging"
+                Visibility="{x:Bind ViewModel.ShowPhotos, Mode=OneWay}">
+        <GridView.ItemTemplate>
+          <DataTemplate x:DataType="search:CatalogEntry">
+            <Grid Width="150" Height="160" RowSpacing="2" ToolTipService.ToolTip="{x:Bind FilePath}">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
+              <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="4">
+                <Image x:Name="Thumb" Stretch="Uniform" />
+              </Border>
+              <TextBlock Grid.Row="1" Text="{x:Bind FileName}" Style="{StaticResource CaptionTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Row="2" Text="{x:Bind Folder}" Style="{StaticResource CaptionTextBlockStyle}" TextTrimming="CharacterEllipsis"
+                         Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+            </Grid>
+          </DataTemplate>
+        </GridView.ItemTemplate>
+      </GridView>
+
+      <!-- Statistics -->
+      <ScrollViewer Grid.Row="2" Visibility="{x:Bind ViewModel.ShowStatistics, Mode=OneWay}" Padding="0,0,12,16">
+        <ItemsRepeater ItemsSource="{x:Bind ViewModel.Statistics.Charts, Mode=OneWay}">
+          <ItemsRepeater.Layout>
+            <UniformGridLayout MinItemWidth="380" MinColumnSpacing="24" MinRowSpacing="24" ItemsStretch="Fill" />
+          </ItemsRepeater.Layout>
+          <ItemsRepeater.ItemTemplate>
+            <DataTemplate x:DataType="search:StatChart">
+              <StackPanel Spacing="6" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                          BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                <TextBlock Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <ItemsControl ItemsSource="{x:Bind Bars}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="search:StatBar">
+                      <Grid ColumnSpacing="8" Padding="0,2" AutomationProperties.Name="{x:Bind Label}">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="130" />
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="48" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{x:Bind Label}" Style="{StaticResource CaptionTextBlockStyle}" TextTrimming="CharacterEllipsis"
+                                   ToolTipService.ToolTip="{x:Bind Label}" VerticalAlignment="Center" />
+                        <ProgressBar Grid.Column="1" Value="{x:Bind views:Ui.Percent(Fraction)}" Maximum="100" MinHeight="8" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{x:Bind Count}" Style="{StaticResource CaptionTextBlockStyle}" HorizontalTextAlignment="Right"
+                                   VerticalAlignment="Center" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsRepeater.ItemTemplate>
+        </ItemsRepeater>
+      </ScrollViewer>
+
+      <!-- Empty catalogue -->
+      <StackPanel Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12" MaxWidth="460"
+                  Visibility="{x:Bind views:Ui.CollapsedIf(ViewModel.HasFolders), Mode=OneWay}">
+        <FontIcon Glyph="&#xE721;" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+        <TextBlock Text="Search all your photos" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
+        <TextBlock TextWrapping="Wrap" HorizontalTextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   Text="Add the folders where you keep photos. PictureIt reads them once into a catalogue, then searches by camera, date, keywords, place and more in an instant." />
+        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+          <Button Content="Add a folder…" Style="{StaticResource AccentButtonStyle}" Command="{x:Bind ViewModel.AddFolderCommand}" />
+          <Button x:Name="AddLibraryFolderButton" Click="OnAddLibraryFolderClick" />
+        </StackPanel>
+      </StackPanel>
+    </Grid>
+  </Grid>
+</Page>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="PictureIt.App.Dialogs.PasteMetadataView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <StackPanel Spacing="12" Width="440">
+    <TextBlock TextWrapping="Wrap">
+      <Run Text="Copy from" />
+      <Run Text="{x:Bind Tool.SourceName}" FontWeight="SemiBold" />
+      <Run Text="onto" />
+      <Run Text="{x:Bind Tool.PhotoCountText}" />
+      <Run Text=". Chosen fields will match the source exactly, including being emptied where the source has nothing." />
+    </TextBlock>
+    <StackPanel>
+      <CheckBox Content="Title, description and keywords" IsChecked="{x:Bind Tool.IncludeDescription, Mode=TwoWay}" />
+      <CheckBox Content="Creator and copyright" IsChecked="{x:Bind Tool.IncludeRights, Mode=TwoWay}" />
+      <CheckBox Content="Location (GPS and place names)" IsChecked="{x:Bind Tool.IncludeLocation, Mode=TwoWay}" />
+      <CheckBox Content="Rating" IsChecked="{x:Bind Tool.IncludeRating, Mode=TwoWay}" />
+      <CheckBox Content="Date taken" IsChecked="{x:Bind Tool.IncludeDateTaken, Mode=TwoWay}" />
+    </StackPanel>
+    <TextBlock Text="{x:Bind Tool.Error, Mode=OneWay}" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" />
+  </StackPanel>
+</UserControl>

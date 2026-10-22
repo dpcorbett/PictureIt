@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="PictureIt.App.Dialogs.ShiftDatesView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:PictureIt.App.Views">
+
+  <StackPanel Spacing="12" Width="460">
+    <TextBlock Text="{x:Bind Tool.PhotoCountText}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+    <RadioButtons x:Name="ModeChoice" SelectionChanged="OnModeChanged">
+      <x:String>Move dates by an amount</x:String>
+      <x:String>Set the correct time of one photo</x:String>
+    </RadioButtons>
+
+    <!-- By amount -->
+    <Grid ColumnSpacing="8" Visibility="{x:Bind views:Ui.CollapsedIf(Tool.UseReference), Mode=OneWay}">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition />
+        <ColumnDefinition />
+        <ColumnDefinition />
+        <ColumnDefinition />
+      </Grid.ColumnDefinitions>
+      <NumberBox Header="Days" Value="{x:Bind Tool.Days, Mode=TwoWay}" SpinButtonPlacementMode="Compact" SmallChange="1" />
+      <NumberBox Grid.Column="1" Header="Hours" Value="{x:Bind Tool.Hours, Mode=TwoWay}" SpinButtonPlacementMode="Compact" SmallChange="1" />
+      <NumberBox Grid.Column="2" Header="Minutes" Value="{x:Bind Tool.Minutes, Mode=TwoWay}" SpinButtonPlacementMode="Compact" SmallChange="1" />
+      <NumberBox Grid.Column="3" Header="Seconds" Value="{x:Bind Tool.Seconds, Mode=TwoWay}" SpinButtonPlacementMode="Compact" SmallChange="1" />
+    </Grid>
+    <TextBlock Text="Use negative numbers to move dates earlier." Style="{StaticResource CaptionTextBlockStyle}"
+               Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind views:Ui.CollapsedIf(Tool.UseReference), Mode=OneWay}" />
+
+    <!-- By reference photo -->
+    <StackPanel Spacing="8" Visibility="{x:Bind Tool.UseReference, Mode=OneWay}">
+      <TextBlock Text="{x:Bind Tool.ReferenceText}" TextWrapping="Wrap" />
+      <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{x:Bind Tool.HasReference}">
+        <CalendarDatePicker x:Name="CorrectDatePicker" DateChanged="OnCorrectDateChanged" />
+        <TimePicker x:Name="CorrectTimePicker" ClockIdentifier="24HourClock" SelectedTimeChanged="OnCorrectTimeChanged" />
+      </StackPanel>
+      <TextBlock Text="Every selected photo moves by the same amount." Style="{StaticResource CaptionTextBlockStyle}"
+                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+    </StackPanel>
+
+    <StackPanel Spacing="4">
+      <CheckBox Content="Also set the time zone" IsChecked="{x:Bind Tool.SetTimeZone, Mode=TwoWay}" />
+      <TextBox PlaceholderText="+01:00" Width="120" HorizontalAlignment="Left"
+               Text="{x:Bind Tool.TimeZone, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+               Visibility="{x:Bind Tool.SetTimeZone, Mode=OneWay}" AutomationProperties.Name="Time zone" />
+      <TextBlock Text="Labels the times with this offset from UTC without moving them." Style="{StaticResource CaptionTextBlockStyle}"
+                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind Tool.SetTimeZone, Mode=OneWay}" />
+    </StackPanel>
+
+    <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Message="{x:Bind Tool.Summary, Mode=OneWay}" />
+    <TextBlock Text="{x:Bind Tool.Error, Mode=OneWay}" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" />
+  </StackPanel>
+</UserControl>
